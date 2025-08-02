@@ -13,7 +13,8 @@
         "https://api.openai.com/*",
         "https://api.moonshot.ai/*",
         "https://api.moonshot.cn/*",
-        "https://api.x.ai/*"
+        "https://api.x.ai/*",
+        "https://openrouter.ai/*"
     ],
     "background": {
         "service_worker": "src/background/service-worker.ts"

@@ -24,6 +24,11 @@ export class LlmClassifier {
             name: 'Grok',
             baseURL: 'https://api.x.ai/v1',
             model: 'grok-beta'
+        },
+        openrouter: {
+            name: 'OpenRouter',
+            baseURL: 'https://openrouter.ai/api/v1',
+            model: 'openrouter/horizon-beta'
         }
     };
 
@@ -37,22 +42,24 @@ export class LlmClassifier {
 
     private detectProvider(apiKey: string): AIProvider {
         // Auto-detect provider based on API key format or content
-        if (apiKey.startsWith('sk-') && !apiKey.includes('kimi')) {
+        if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
             return this.providers.openai;
+        } else if (apiKey.startsWith('sk-or-v1-') || apiKey.includes('openrouter')) {
+            return this.providers.openrouter;
         } else if (apiKey.includes('kimi') || apiKey.length > 40) {
             // Moonshot keys are often longer and may contain 'kimi' or be generic long tokens
             return this.providers.moonshot;
         } else if (apiKey.includes('grok') || apiKey.startsWith('xai-')) {
             return this.providers.grok;
         }
-        // Default to Moonshot for most generic keys since that's what user is using
-        return this.providers.moonshot;
+        // Default to OpenRouter for most generic keys since it supports many models
+        return this.providers.openrouter;
     }
 
     async classifyUrl(url: string, title: string): Promise<{ folderPath: string[], tags: string[] }> {
         // Always reload API key to ensure we have the latest saved key
         await this.loadApiKey();
-        
+
         if (!this.apiKey) {
             throw new Error('API key not configured. Please save your API key first.');
         }
@@ -68,7 +75,7 @@ export class LlmClassifier {
             dangerouslyAllowBrowser: true // Allow usage in browser extension
         });
 
-        const prompt = `You are Kimi, an AI assistant. Please analyze this webpage and classify it into a bookmark folder structure.
+        const prompt = `You are an AI assistant. Please analyze this webpage and classify it into a bookmark folder structure.
 
 URL: ${url}
 Title: ${title}
@@ -88,41 +95,41 @@ Examples:
 
         try {
             console.log(`Using ${provider.name} for classification`);
-            
+
             const completion = await client.chat.completions.create({
                 model: provider.model,
-                messages: [{ 
-                    role: 'user', 
-                    content: prompt 
+                messages: [{
+                    role: 'user',
+                    content: prompt
                 }],
                 max_tokens: 300,
                 temperature: 0.2
             });
 
             const result = completion.choices[0].message.content;
-            
+
             if (!result) {
                 throw new Error('No response content received from AI provider');
             }
-            
+
             // Clean and parse JSON response
             const cleanResult = result.replace(/```json\n?|\n?```/g, '').trim();
             const parsed = JSON.parse(cleanResult);
-            
+
             // Validate response structure
             if (!parsed.folderPath || !Array.isArray(parsed.folderPath)) {
                 throw new Error('Invalid response format: missing folderPath');
             }
-            
+
             console.log('Classification successful:', parsed);
             return {
                 folderPath: parsed.folderPath.slice(0, 3), // Max 3 levels
                 tags: parsed.tags || []
             };
-            
+
         } catch (error) {
             console.error('Classification error:', error);
-            
+
             // Enhanced error handling for OpenAI library
             if (error instanceof OpenAI.APIError) {
                 if (error.status === 401) {
@@ -135,7 +142,7 @@ Examples:
                     throw new Error(`API Error (${error.status}): ${error.message}`);
                 }
             }
-            
+
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             throw new Error(`Classification failed: ${errorMessage}`);
         }
