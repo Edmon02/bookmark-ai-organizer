@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>AI Bookmark Organizer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 AI Bookmark Organizer</h1>
+            <div class="status" id="status">Ready</div>
+        </header>
+        <main>
+            <div class="bookmark-section">
+                <h3>Current Page</h3>
+                <div id="page-info">
+                    <span id="page-title">Loading...</span>
+                    <span id="page-url">Loading...</span>
+                </div>
+                <button id="classify-bookmark" class="btn btn-accent">🏷️ Classify & Save</button>
+            </div>
+            <div class="settings">
+                <details>
+                    <summary>⚙️ Settings</summary>
+                    <div id="settings-panel" class="settings-content">
+                        <label>
+                            API Key:
+                            <input type="text" id="api-key" placeholder="Enter your LLM API key">
+                        </label>
+                        <button id="save-api-key" class="btn btn-primary">Save API Key</button>
+                    </div>
+                </details>
+            </div>
+        </main>
+        <footer>
+            <div class="progress" id="progress" style="display: none;">
+                <div class="progress-bar"></div>
+                <span class="progress-text">Processing...</span>
+            </div>
+        </footer>
+    </div>
+    <script src="popup.js"></script>
+</body>
+
+</html>
