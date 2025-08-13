@@ -8,7 +8,7 @@ interface AIProvider {
 }
 
 export class LlmClassifier {
-    private apiKey: string | null = null;
+    private apiKey: string | undefined = undefined;
     private providers: Record<string, AIProvider> = {
         openai: {
             name: 'OpenAI',
@@ -29,7 +29,12 @@ export class LlmClassifier {
             name: 'OpenRouter',
             baseURL: 'https://openrouter.ai/api/v1',
             model: 'openrouter/horizon-beta'
-        }
+        },
+        groq: {
+            name: 'Groq',
+            baseURL: 'https://api.groq.com/openai/v1',
+            model: 'llama-3.3-70b-versatile'
+        },
     };
 
     constructor() {
@@ -37,12 +42,15 @@ export class LlmClassifier {
     }
 
     private async loadApiKey() {
-        this.apiKey = await SecurityManager.getApiKey();
+        this.apiKey = (await SecurityManager.getApiKey())?.trim();
     }
 
     private detectProvider(apiKey: string): AIProvider {
         // Auto-detect provider based on API key format or content
-        if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
+        if (apiKey.startsWith('gsk_')) {
+            console.log('Selected provider: Groq');
+            return this.providers.groq;
+        } else if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
             return this.providers.openai;
         } else if (apiKey.startsWith('sk-or-v1-') || apiKey.includes('openrouter')) {
             return this.providers.openrouter;
@@ -75,23 +83,46 @@ export class LlmClassifier {
             dangerouslyAllowBrowser: true // Allow usage in browser extension
         });
 
-        const prompt = `You are an AI assistant. Please analyze this webpage and classify it into a bookmark folder structure.
+        const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and title to determine a logical folder structure and relevant tags. Use emojis in folder names to make them visually distinct and intuitive. Follow these guidelines:
 
-URL: ${url}
-Title: ${title}
+1. **Folder Structure**:
+   - Create a folder path with 1-3 levels (e.g., ["📰 News", "🌍 Global"] or ["💻 Technology", "🖥️ Software", "🛠️ Tools"]).
+   - Use simple, widely supported Unicode emojis (e.g., 📰, 💻, 🛒, 📚) at the start of each folder name.
+   - Ensure folder names are concise, descriptive, and reflect the webpage's content or purpose.
+   - Avoid nested folders deeper than 3 levels.
 
-Create a logical folder structure (maximum 3 levels) and relevant tags for bookmarking.
+2. **Tags**:
+   - Generate 2-5 concise, lowercase tags that describe the webpage’s content, purpose, or category.
+   - Tags should be specific and useful for searching (e.g., "coding" instead of "tech").
 
-Respond with valid JSON only (no extra text or markdown):
+3. **Context**:
+   - Infer the webpage’s purpose from the URL and title (e.g., blog, e-commerce, news, social media, education).
+   - Consider the domain (e.g., github.com → coding, amazon.com → shopping).
+
+4. **Output**:
+   - Respond with valid JSON only, containing "folderPath" (array of strings) and "tags" (array of strings).
+   - Do not include markdown, code fences, or extra text.
+
+**URL**: ${url}
+**Title**: ${title}
+
+**Examples**:
+- URL: https://www.nytimes.com/politics, Title: "Election Updates"
+  → {"folderPath": ["📰 News", "🌍 Global", "🗳️ Politics"], "tags": ["politics", "election", "news"]}
+- URL: https://github.com/python, Title: "Python Repository"
+  → {"folderPath": ["💻 Technology", "🖥️ Software", "🛠️ Coding"], "tags": ["coding", "python", "github"]}
+- URL: https://www.amazon.com/electronics, Title: "Electronics Store"
+  → {"folderPath": ["🛒 Shopping", "📱 Electronics"], "tags": ["shopping", "electronics", "amazon"]}
+- URL: https://www.khanacademy.org/math, Title: "Math Lessons"
+  → {"folderPath": ["📚 Education", "➗ Math"], "tags": ["education", "math", "learning"]}
+- URL: https://www.reddit.com/r/science, Title: "Science Discussions"
+  → {"folderPath": ["🌐 Social Media", "🔬 Science"], "tags": ["social", "science", "reddit"]} 
+
+**Response Format**:
 {
-  "folderPath": ["Category", "Subcategory", "Specific"],
+  "folderPath": ["Emoji Category", "Emoji Subcategory", "Emoji Specific"],
   "tags": ["tag1", "tag2", "tag3"]
-}
-
-Examples:
-- Tech blog → {"folderPath": ["Technology", "Blogs"], "tags": ["tech", "blog", "programming"]}
-- Recipe site → {"folderPath": ["Lifestyle", "Food", "Recipes"], "tags": ["food", "cooking", "recipe"]}
-- News article → {"folderPath": ["News", "Current Events"], "tags": ["news", "current", "events"]}`;
+}`;
 
         try {
             console.log(`Using ${provider.name} for classification`);
