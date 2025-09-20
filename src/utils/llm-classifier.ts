@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { SecurityManager } from './security';
+import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';
 
 interface AIProvider {
     name: string;
@@ -9,6 +10,8 @@ interface AIProvider {
 
 export class LlmClassifier {
     private apiKey: string | undefined = undefined;
+    private providerOverride: string | null = null;
+    private selectedOpenRouterModel: string | null = null;
     private providers: Record<string, AIProvider> = {
         openai: {
             name: 'OpenAI',
@@ -28,7 +31,8 @@ export class LlmClassifier {
         openrouter: {
             name: 'OpenRouter',
             baseURL: 'https://openrouter.ai/api/v1',
-            model: 'openrouter/horizon-beta'
+            // Use a stable widely-available smaller model as initial default; can be overridden dynamically
+            model: 'openai/gpt-4o-mini'
         },
         groq: {
             name: 'Groq',
@@ -43,6 +47,15 @@ export class LlmClassifier {
 
     private async loadApiKey() {
         this.apiKey = (await SecurityManager.getApiKey())?.trim();
+    }
+
+    private async loadPreferences() {
+        try {
+            this.providerOverride = await getProviderPreference();
+            this.selectedOpenRouterModel = await getSelectedOpenRouterModel();
+        } catch (e) {
+            console.warn('Failed to load provider preferences', e);
+        }
     }
 
     private detectProvider(apiKey: string): AIProvider {
@@ -73,8 +86,17 @@ export class LlmClassifier {
         }
 
         console.log('Using API key (first 10 chars):', this.apiKey.substring(0, 10) + '...');
-        const provider = this.detectProvider(this.apiKey);
-        console.log('Detected provider:', provider.name);
+        await this.loadPreferences();
+
+        const baseProvider = (this.providerOverride && this.providers[this.providerOverride])
+            ? this.providers[this.providerOverride]
+            : this.detectProvider(this.apiKey);
+        const provider = { ...baseProvider }; // copy to avoid mutating shared config
+
+        if (provider.name === 'OpenRouter' && this.selectedOpenRouterModel) {
+            provider.model = this.selectedOpenRouterModel;
+        }
+        console.log('Using provider:', provider.name, 'model:', provider.model);
 
         // Create OpenAI client with provider-specific configuration
         const client = new OpenAI({
@@ -125,43 +147,56 @@ export class LlmClassifier {
 }`;
 
         try {
-            console.log(`Using ${provider.name} for classification`);
+            const attemptClassification = async (): Promise<string> => {
+                const completion = await client.chat.completions.create({
+                    model: provider.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 300,
+                    temperature: 0.2
+                });
+                return completion.choices[0].message.content || '';
+            };
 
-            const completion = await client.chat.completions.create({
-                model: provider.model,
-                messages: [{
-                    role: 'user',
-                    content: prompt
-                }],
-                max_tokens: 300,
-                temperature: 0.2
-            });
-
-            const result = completion.choices[0].message.content;
+            let retried = false;
+            let result: string | undefined;
+            try {
+                console.log(`Using ${provider.name} for classification (model=${provider.model})`);
+                result = await attemptClassification();
+            } catch (err) {
+                if (provider.name === 'OpenRouter' && err instanceof OpenAI.APIError && err.status === 404 && !retried) {
+                    console.warn('OpenRouter model returned 404; attempting fallback model. Original model:', provider.model);
+                    retried = true;
+                    await clearSelectedOpenRouterModel();
+                    const apiKey = this.apiKey!;
+                    const fallback = await chooseDefaultOpenRouterModel(apiKey);
+                    if (fallback) {
+                        provider.model = fallback;
+                        console.log('Retrying with fallback OpenRouter model:', fallback);
+                        await setSelectedOpenRouterModel(fallback);
+                        result = await attemptClassification();
+                    } else {
+                        throw new Error('No fallback OpenRouter model available.');
+                    }
+                } else {
+                    throw err;
+                }
+            }
 
             if (!result) {
                 throw new Error('No response content received from AI provider');
             }
-
-            // Clean and parse JSON response
             const cleanResult = result.replace(/```json\n?|\n?```/g, '').trim();
             const parsed = JSON.parse(cleanResult);
-
-            // Validate response structure
             if (!parsed.folderPath || !Array.isArray(parsed.folderPath)) {
                 throw new Error('Invalid response format: missing folderPath');
             }
-
             console.log('Classification successful:', parsed);
             return {
-                folderPath: parsed.folderPath.slice(0, 3), // Max 3 levels
+                folderPath: parsed.folderPath.slice(0, 3),
                 tags: parsed.tags || []
             };
-
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Classification error:', error);
-
-            // Enhanced error handling for OpenAI library
             if (error instanceof OpenAI.APIError) {
                 if (error.status === 401) {
                     throw new Error('Invalid API key. Please check your credentials.');
@@ -173,7 +208,6 @@ export class LlmClassifier {
                     throw new Error(`API Error (${error.status}): ${error.message}`);
                 }
             }
-
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             throw new Error(`Classification failed: ${errorMessage}`);
         }

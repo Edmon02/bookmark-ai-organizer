@@ -30,6 +30,30 @@
                             API Key:
                             <input type="text" id="api-key" placeholder="Enter your LLM API key">
                         </label>
+                        <label>
+                            Provider:
+                            <select id="provider-select">
+                                <option value="auto">Auto Detect</option>
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="groq">Groq</option>
+                                <option value="moonshot">Moonshot (Kimi)</option>
+                                <option value="grok">Grok</option>
+                            </select>
+                        </label>
+                        <div id="openrouter-model-section" style="display:none;">
+                            <label>
+                                OpenRouter Model:
+                                <div style="display:flex; gap:4px; align-items:center;">
+                                    <select id="openrouter-models" style="flex:1;">
+                                        <option value="">Loading...</option>
+                                    </select>
+                                    <button id="refresh-models" class="btn" title="Refresh models">↻</button>
+                                </div>
+                            </label>
+                            <small id="model-status" style="display:block; opacity:0.8; margin-top:2px;">Select a model
+                            </small>
+                        </div>
                         <button id="save-api-key" class="btn btn-primary">Save API Key</button>
                     </div>
                 </details>
