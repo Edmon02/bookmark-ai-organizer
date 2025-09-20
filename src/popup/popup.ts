@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { LlmClassifier } from '../utils/llm-classifier';
 import { SecurityManager } from '../utils/security';
 import { fetchOpenRouterModels, getProviderPreference, setProviderPreference, getSelectedOpenRouterModel, setSelectedOpenRouterModel } from '../utils/openrouter';

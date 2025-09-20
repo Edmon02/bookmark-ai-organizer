@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import OpenAI from 'openai';
 import { SecurityManager } from './security';
 import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';

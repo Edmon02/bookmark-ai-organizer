@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export class SecurityManager {
     private static readonly STORAGE_KEY = 'encrypted_api_key';
 

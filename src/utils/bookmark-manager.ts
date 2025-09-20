@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export class BookmarkManager {
     async createBookmark(url: string, title: string, folderPath: string[]): Promise<chrome.bookmarks.BookmarkTreeNode> {
         const folderId = await this.ensureFolderPath(folderPath);

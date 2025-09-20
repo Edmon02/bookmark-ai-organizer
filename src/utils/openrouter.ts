@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // OpenRouter models utility: fetch, cache, and preference management
 // Caching strategy: store models in chrome.storage.local with timestamp; TTL = 15 minutes.
 

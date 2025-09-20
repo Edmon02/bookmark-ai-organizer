@@ -113,3 +113,16 @@ npm test
 Licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
 
 "AI Bookmark Organizer" is distributed on an "AS IS" basis without warranties or conditions of any kind.
+
+### Release Notes Automation
+Generate release notes for a given version (uses `CHANGELOG.md`):
+```bash
+npm run release:notes -- 1.1.0
+```
+Outputs the exact section for easy copy into a GitHub Release.
+
+### SPDX Headers
+Source files now include SPDX identifiers (`SPDX-License-Identifier: Apache-2.0`) to simplify automated license scanning.
+
+### Releases
+See `RELEASING.md` for the full workflow. Tagging `vX.Y.Z` triggers an automated GitHub Release with the packaged `extension.zip`.

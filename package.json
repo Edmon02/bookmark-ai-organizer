@@ -6,6 +6,7 @@
     "build:dev": "webpack --mode=development",
     "build:store": "npm run clean && npm run build && npm run package",
     "dev": "webpack --mode=development --watch",
+    "release:notes": "node scripts/release-notes.js",
     "test": "jest",
     "clean": "rm -rf dist extension.zip",
     "type-check": "tsc --noEmit",
