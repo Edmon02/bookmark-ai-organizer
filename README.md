@@ -108,3 +108,8 @@ npm test
 - Model selection persisted and applied to classification calls.
 - Graceful handling of 401, 429, offline, and empty responses.
 - No runtime TypeScript errors in modified files.
+
+## License
+Licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
+
+"AI Bookmark Organizer" is distributed on an "AS IS" basis without warranties or conditions of any kind.
