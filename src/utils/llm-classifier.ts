@@ -2,45 +2,12 @@
 import OpenAI from 'openai';
 import { SecurityManager } from './security';
 import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';
-
-interface AIProvider {
-    name: string;
-    baseURL: string;
-    model: string;
-}
+import { createClient } from './ai-provider';
 
 export class LlmClassifier {
     private apiKey: string | undefined = undefined;
     private providerOverride: string | null = null;
     private selectedOpenRouterModel: string | null = null;
-    private providers: Record<string, AIProvider> = {
-        openai: {
-            name: 'OpenAI',
-            baseURL: 'https://api.openai.com/v1',
-            model: 'gpt-3.5-turbo'
-        },
-        moonshot: {
-            name: 'Moonshot (Kimi)',
-            baseURL: 'https://api.moonshot.ai/v1',
-            model: 'kimi-k2-0711-preview'
-        },
-        grok: {
-            name: 'Grok',
-            baseURL: 'https://api.x.ai/v1',
-            model: 'grok-beta'
-        },
-        openrouter: {
-            name: 'OpenRouter',
-            baseURL: 'https://openrouter.ai/api/v1',
-            // Use a stable widely-available smaller model as initial default; can be overridden dynamically
-            model: 'openai/gpt-4o-mini'
-        },
-        groq: {
-            name: 'Groq',
-            baseURL: 'https://api.groq.com/openai/v1',
-            model: 'llama-3.3-70b-versatile'
-        },
-    };
 
     constructor() {
         this.loadApiKey();
@@ -59,25 +26,6 @@ export class LlmClassifier {
         }
     }
 
-    private detectProvider(apiKey: string): AIProvider {
-        // Auto-detect provider based on API key format or content
-        if (apiKey.startsWith('gsk_')) {
-            console.log('Selected provider: Groq');
-            return this.providers.groq;
-        } else if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
-            return this.providers.openai;
-        } else if (apiKey.startsWith('sk-or-v1-') || apiKey.includes('openrouter')) {
-            return this.providers.openrouter;
-        } else if (apiKey.includes('kimi') || apiKey.length > 40) {
-            // Moonshot keys are often longer and may contain 'kimi' or be generic long tokens
-            return this.providers.moonshot;
-        } else if (apiKey.includes('grok') || apiKey.startsWith('xai-')) {
-            return this.providers.grok;
-        }
-        // Default to OpenRouter for most generic keys since it supports many models
-        return this.providers.openrouter;
-    }
-
     async classifyUrl(url: string, title: string): Promise<{ folderPath: string[], tags: string[] }> {
         // Always reload API key to ensure we have the latest saved key
         await this.loadApiKey();
@@ -89,22 +37,8 @@ export class LlmClassifier {
         console.log('Using API key (first 10 chars):', this.apiKey.substring(0, 10) + '...');
         await this.loadPreferences();
 
-        const baseProvider = (this.providerOverride && this.providers[this.providerOverride])
-            ? this.providers[this.providerOverride]
-            : this.detectProvider(this.apiKey);
-        const provider = { ...baseProvider }; // copy to avoid mutating shared config
-
-        if (provider.name === 'OpenRouter' && this.selectedOpenRouterModel) {
-            provider.model = this.selectedOpenRouterModel;
-        }
+        const { client, provider } = createClient(this.apiKey, this.providerOverride, this.selectedOpenRouterModel);
         console.log('Using provider:', provider.name, 'model:', provider.model);
-
-        // Create OpenAI client with provider-specific configuration
-        const client = new OpenAI({
-            apiKey: this.apiKey,
-            baseURL: provider.baseURL,
-            dangerouslyAllowBrowser: true // Allow usage in browser extension
-        });
 
         const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and title to determine a logical folder structure and relevant tags. Use emojis in folder names to make them visually distinct and intuitive. Follow these guidelines:
 

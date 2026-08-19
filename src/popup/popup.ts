@@ -17,7 +17,14 @@ class PopupController {
         openRouterModelsSelect: HTMLSelectElement;
         refreshModelsBtn: HTMLButtonElement;
         modelStatus: HTMLElement;
+        savedStatus: HTMLElement;
+        savedPath: HTMLElement;
+        revealBtn: HTMLButtonElement;
+        openManageBtn: HTMLButtonElement;
     } = {} as any;
+
+    private currentTabUrl: string | null = null;
+    private revealBookmarkId: string | null = null;
 
     constructor() {
         this.initializeElements();
@@ -40,6 +47,10 @@ class PopupController {
         this.elements.openRouterModelsSelect = document.getElementById('openrouter-models') as HTMLSelectElement;
         this.elements.refreshModelsBtn = document.getElementById('refresh-models') as HTMLButtonElement;
         this.elements.modelStatus = document.getElementById('model-status')!;
+        this.elements.savedStatus = document.getElementById('saved-status')!;
+        this.elements.savedPath = document.getElementById('saved-path')!;
+        this.elements.revealBtn = document.getElementById('reveal-bookmark') as HTMLButtonElement;
+        this.elements.openManageBtn = document.getElementById('open-manage') as HTMLButtonElement;
     }
 
     private bindEvents() {
@@ -48,12 +59,53 @@ class PopupController {
         this.elements.providerSelect.addEventListener('change', () => this.onProviderChange());
         this.elements.openRouterModelsSelect.addEventListener('change', () => this.onModelSelected());
         this.elements.refreshModelsBtn.addEventListener('click', () => this.loadOpenRouterModels(true));
+        this.elements.revealBtn.addEventListener('click', () => this.revealBookmark());
+        this.elements.openManageBtn.addEventListener('click', () => this.openManagePage());
     }
 
     private async loadPageInfo() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         this.elements.pageTitle.textContent = tab.title || 'No Title';
         this.elements.pageUrl.textContent = tab.url || 'No URL';
+        this.currentTabUrl = tab.url || null;
+        await this.checkSavedStatus();
+    }
+
+    private async checkSavedStatus() {
+        if (!this.currentTabUrl) return;
+        try {
+            const response = await chrome.runtime.sendMessage({
+                action: 'FIND_BOOKMARK',
+                data: { url: this.currentTabUrl }
+            });
+            if (response?.success && response.found) {
+                this.renderSavedStatus(response.found.bookmark.id, response.found.path);
+            } else {
+                this.hideSavedStatus();
+            }
+        } catch (error) {
+            console.warn('Failed to check saved status', error);
+        }
+    }
+
+    private renderSavedStatus(bookmarkId: string, path: string[]) {
+        this.revealBookmarkId = bookmarkId;
+        this.elements.savedPath.textContent = `✅ Saved in: ${path.join(' / ') || 'Bookmarks Bar'}`;
+        this.elements.savedStatus.style.display = 'flex';
+    }
+
+    private hideSavedStatus() {
+        this.revealBookmarkId = null;
+        this.elements.savedStatus.style.display = 'none';
+    }
+
+    private revealBookmark() {
+        if (!this.revealBookmarkId) return;
+        chrome.tabs.create({ url: `chrome://bookmarks/?id=${this.revealBookmarkId}` });
+    }
+
+    private openManagePage() {
+        chrome.tabs.create({ url: chrome.runtime.getURL('manage/manage.html') });
     }
 
     private async initializeProviderPreference() {
@@ -177,11 +229,14 @@ class PopupController {
             const classification = await classifier.classifyUrl(tab.url, tab.title);
             console.log('Classification result:', classification);
             
-            await chrome.runtime.sendMessage({
+            const response = await chrome.runtime.sendMessage({
                 action: 'CREATE_BOOKMARK',
                 data: { url: tab.url, title: tab.title, classification }
             });
             this.showMessage('Bookmark classified and saved!', 'success');
+            if (response?.success && response.bookmark) {
+                this.renderSavedStatus(response.bookmark.id, response.path || classification.folderPath);
+            }
         } catch (error) {
             console.error('Classification error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

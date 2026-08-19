@@ -74,6 +74,39 @@ header h1 {
     width: 100%;
 }
 
+.btn-secondary {
+    background: #f1f5f9;
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    width: 100%;
+}
+
+.btn-open {
+    background: var(--primary);
+    color: white;
+    font-size: 12px;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+
+.saved-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: #dcfce7;
+    border: 1px solid #bbf7d0;
+    color: var(--success);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 8px 0;
+    font-size: 12px;
+}
+
+.saved-status span {
+    overflow-wrap: anywhere;
+}
+
 .bookmark-section {
     background: #f8fafc;
     padding: 12px;
