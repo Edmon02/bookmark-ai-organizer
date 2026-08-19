@@ -117,6 +117,11 @@ input[type="text"] {
     padding: 10px 12px;
 }
 
+.result-item.loading {
+    color: #64748b;
+    background: #f8fafc;
+}
+
 .result-title {
     font-weight: 600;
     font-size: 14px;
@@ -183,11 +188,58 @@ input[type="text"] {
     background: #f1f5f9;
 }
 
+.chat-bubble.assistant.loading {
+    color: #64748b;
+    font-style: italic;
+}
+
 .chat-bubble.system {
     align-self: center;
     background: #fef3c7;
     color: #92400e;
     font-size: 12px;
+}
+
+.chat-bubble.welcome-bubble {
+    max-width: 100%;
+}
+
+.chat-bubble p,
+.chat-bubble ol,
+.chat-bubble ul {
+    margin: 0;
+}
+
+.chat-bubble p + p,
+.chat-bubble p + ol,
+.chat-bubble p + ul,
+.chat-bubble ol + p,
+.chat-bubble ul + p,
+.chat-bubble ol + ul,
+.chat-bubble ul + ol {
+    margin-top: 8px;
+}
+
+.chat-bubble ol,
+.chat-bubble ul {
+    padding-left: 20px;
+}
+
+.chat-bubble code {
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 12px;
+}
+
+.bookmark-link {
+    border: none;
+    background: transparent;
+    color: var(--primary);
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
 }
 
 .chat-input-row {

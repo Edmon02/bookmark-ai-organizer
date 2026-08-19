@@ -25,6 +25,7 @@ class PopupController {
 
     private currentTabUrl: string | null = null;
     private revealBookmarkId: string | null = null;
+    private hasApiKey = false;
 
     constructor() {
         this.initializeElements();
@@ -92,11 +93,13 @@ class PopupController {
         this.revealBookmarkId = bookmarkId;
         this.elements.savedPath.textContent = `✅ Saved in: ${path.join(' / ') || 'Bookmarks Bar'}`;
         this.elements.savedStatus.style.display = 'flex';
+        this.syncClassifyButtonState();
     }
 
     private hideSavedStatus() {
         this.revealBookmarkId = null;
         this.elements.savedStatus.style.display = 'none';
+        this.syncClassifyButtonState();
     }
 
     private revealBookmark() {
@@ -122,15 +125,17 @@ class PopupController {
         try {
             const apiKey = await SecurityManager.getApiKey();
             if (apiKey) {
+                this.hasApiKey = true;
                 this.showMessage('API key loaded successfully', 'success');
-                this.elements.classifyBtn.removeAttribute('disabled');
             } else {
+                this.hasApiKey = false;
                 this.showMessage('Please configure your API key', 'info');
-                this.elements.classifyBtn.setAttribute('disabled', 'true');
             }
+            this.syncClassifyButtonState();
         } catch (error) {
+            this.hasApiKey = false;
             this.showMessage('Error loading API key', 'error');
-            this.elements.classifyBtn.setAttribute('disabled', 'true');
+            this.syncClassifyButtonState();
         }
     }
 
@@ -147,9 +152,10 @@ class PopupController {
         
         try {
             await SecurityManager.storeApiKey(apiKey);
+            this.hasApiKey = true;
             this.showMessage('API key saved successfully!', 'success');
             this.elements.apiKeyInput.value = '';
-            this.elements.classifyBtn.removeAttribute('disabled');
+            this.syncClassifyButtonState();
             if (this.elements.providerSelect.value === 'openrouter') {
                 await this.loadOpenRouterModels(true);
             }
@@ -208,7 +214,14 @@ class PopupController {
                 this.elements.openRouterModelsSelect.value = selected;
                 this.elements.modelStatus.textContent = `Selected: ${selected}`;
             } else {
-                this.elements.modelStatus.textContent = 'Select a model';
+                this.elements.openRouterModelsSelect.selectedIndex = 0;
+                const fallbackSelection = this.elements.openRouterModelsSelect.value;
+                if (fallbackSelection) {
+                    await setSelectedOpenRouterModel(fallbackSelection);
+                    this.elements.modelStatus.textContent = `Selected: ${fallbackSelection}`;
+                } else {
+                    this.elements.modelStatus.textContent = 'Select a model';
+                }
             }
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'Failed to load models';
@@ -217,6 +230,11 @@ class PopupController {
     }
 
     private async classifyBookmark() {
+        if (this.revealBookmarkId) {
+            this.showMessage('This page is already saved. Use Reveal to open its bookmark location.', 'info');
+            return;
+        }
+
         this.showProgress('Classifying bookmark...');
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -228,15 +246,19 @@ class PopupController {
             
             const classification = await classifier.classifyUrl(tab.url, tab.title);
             console.log('Classification result:', classification);
+            if (classification.modelFallbackMessage) {
+                this.showMessage(classification.modelFallbackMessage, 'info');
+            }
             
             const response = await chrome.runtime.sendMessage({
                 action: 'CREATE_BOOKMARK',
                 data: { url: tab.url, title: tab.title, classification }
             });
-            this.showMessage('Bookmark classified and saved!', 'success');
-            if (response?.success && response.bookmark) {
-                this.renderSavedStatus(response.bookmark.id, response.path || classification.folderPath);
+            if (!response?.success || !response.bookmark) {
+                throw new Error(response?.error || 'Bookmark could not be saved.');
             }
+            this.renderSavedStatus(response.bookmark.id, response.path || classification.folderPath);
+            this.showMessage('Bookmark classified and saved!', 'success');
         } catch (error) {
             console.error('Classification error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -288,6 +310,26 @@ class PopupController {
 
     private hideProgress() {
         this.elements.progress.style.display = 'none';
+    }
+
+    private syncClassifyButtonState() {
+        const alreadySaved = Boolean(this.revealBookmarkId);
+        const button = this.elements.classifyBtn as HTMLButtonElement;
+
+        if (!this.hasApiKey) {
+            button.disabled = true;
+            button.textContent = '🏷️ Classify & Save';
+            return;
+        }
+
+        if (alreadySaved) {
+            button.disabled = true;
+            button.textContent = '✅ Already saved';
+            return;
+        }
+
+        button.disabled = false;
+        button.textContent = '🏷️ Classify & Save';
     }
 }
 

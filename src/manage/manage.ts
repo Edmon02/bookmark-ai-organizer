@@ -15,6 +15,7 @@ class ManagePageController {
     private chatMessagesEl: HTMLElement;
     private chatInput: HTMLInputElement;
     private chatSendBtn: HTMLButtonElement;
+    private chatWelcomeShown = false;
 
     private history: ChatMessage[] = [];
 
@@ -31,6 +32,7 @@ class ManagePageController {
         this.bindTabs();
         this.bindSearch();
         this.bindChat();
+        this.showChatWelcome();
     }
 
     private bindTabs() {
@@ -55,8 +57,10 @@ class ManagePageController {
             return;
         }
         this.searchBtn.disabled = true;
+        this.searchDescription.disabled = true;
         this.searchStatus.textContent = 'Searching…';
         this.searchResults.innerHTML = '';
+        this.renderSearchLoading();
         try {
             const response = await chrome.runtime.sendMessage({
                 action: 'SEARCH_BOOKMARKS',
@@ -71,9 +75,18 @@ class ManagePageController {
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Search failed';
             this.searchStatus.textContent = message;
+            this.searchResults.innerHTML = '';
         } finally {
             this.searchBtn.disabled = false;
+            this.searchDescription.disabled = false;
         }
+    }
+
+    private renderSearchLoading() {
+        const li = document.createElement('li');
+        li.className = 'result-item loading';
+        li.textContent = 'Looking through your saved bookmarks...';
+        this.searchResults.appendChild(li);
     }
 
     private renderResults(matches: BookmarkMatch[]) {
@@ -110,13 +123,93 @@ class ManagePageController {
         });
     }
 
+    private showChatWelcome() {
+        if (this.chatWelcomeShown) return;
+        this.chatWelcomeShown = true;
+        const welcome = this.appendBubble(
+            'system',
+            'Try prompts like "show me the top 10 most organized bookmarks", "find the bookmark about TypeScript decorators", or "move my Python bookmarks into a new folder".'
+        );
+        welcome.classList.add('welcome-bubble');
+    }
+
     private appendBubble(role: 'user' | 'assistant' | 'system', text: string): HTMLElement {
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble ${role}`;
-        bubble.textContent = text;
+        if (role === 'assistant') {
+            this.renderAssistantMessage(bubble, text);
+        } else {
+            bubble.textContent = text;
+        }
         this.chatMessagesEl.appendChild(bubble);
         this.chatMessagesEl.scrollTop = this.chatMessagesEl.scrollHeight;
         return bubble;
+    }
+
+    private renderAssistantMessage(container: HTMLElement, text: string) {
+        const escaped = this.escapeHtml(text);
+        const blocks = escaped.split(/\n\s*\n/).filter(Boolean);
+
+        for (const block of blocks) {
+            const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
+            if (!lines.length) continue;
+
+            if (lines.every(line => /^\d+\.\s/.test(line))) {
+                const ol = document.createElement('ol');
+                for (const line of lines) {
+                    const li = document.createElement('li');
+                    li.innerHTML = this.decorateInlineMarkdown(line.replace(/^\d+\.\s/, ''));
+                    this.bindBookmarkLinks(li);
+                    ol.appendChild(li);
+                }
+                container.appendChild(ol);
+                continue;
+            }
+
+            if (lines.every(line => /^-\s/.test(line))) {
+                const ul = document.createElement('ul');
+                for (const line of lines) {
+                    const li = document.createElement('li');
+                    li.innerHTML = this.decorateInlineMarkdown(line.replace(/^-\s/, ''));
+                    this.bindBookmarkLinks(li);
+                    ul.appendChild(li);
+                }
+                container.appendChild(ul);
+                continue;
+            }
+
+            const p = document.createElement('p');
+            p.innerHTML = this.decorateInlineMarkdown(lines.join('<br>'));
+            this.bindBookmarkLinks(p);
+            container.appendChild(p);
+        }
+    }
+
+    private decorateInlineMarkdown(text: string): string {
+        return text
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/`(.+?)`/g, '<code>$1</code>')
+            .replace(/\bbookmark\s+(\d+)\b/gi, 'bookmark <button class="bookmark-link" data-bookmark-id="$1">#$1</button>')
+            .replace(/\bid:\s*(\d+)\b/gi, 'id: <button class="bookmark-link" data-bookmark-id="$1">#$1</button>');
+    }
+
+    private bindBookmarkLinks(container: ParentNode) {
+        container.querySelectorAll<HTMLButtonElement>('.bookmark-link').forEach(button => {
+            button.addEventListener('click', () => {
+                const bookmarkId = button.dataset.bookmarkId;
+                if (!bookmarkId) return;
+                chrome.tabs.create({ url: `chrome://bookmarks/?id=${bookmarkId}` });
+            });
+        });
+    }
+
+    private escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     private async sendChatMessage() {
@@ -128,6 +221,8 @@ class ManagePageController {
 
         this.appendBubble('user', text);
         this.history.push({ role: 'user', content: text });
+        const loadingBubble = this.appendBubble('assistant', 'Thinking...');
+        loadingBubble.classList.add('loading');
 
         try {
             const response = await chrome.runtime.sendMessage({
@@ -141,12 +236,14 @@ class ManagePageController {
             const proposedActions: DisplayedProposedAction[] = response.proposedActions || [];
             this.history.push({ role: 'assistant', content });
 
+            loadingBubble.remove();
             const bubble = this.appendBubble('assistant', content);
             for (const action of proposedActions) {
                 this.renderProposedAction(bubble, action);
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Chat request failed';
+            loadingBubble.remove();
             this.appendBubble('system', message);
         } finally {
             this.chatInput.disabled = false;

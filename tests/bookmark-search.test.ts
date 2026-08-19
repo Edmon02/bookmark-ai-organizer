@@ -63,4 +63,38 @@ describe('bookmark-search', () => {
         mockCreate.mockResolvedValue({ choices: [{ message: { content: 'not json' } }] });
         await expect(findMatchingBookmarks('anything')).rejects.toThrow('unparseable response');
     });
+
+    test('keeps older matching bookmarks in the candidate set for large libraries', async () => {
+        const largeChildren = Array.from({ length: 350 }, (_, index) => ({
+            id: String(index + 2),
+            parentId: '1',
+            title: index === 0 ? 'Legacy React Guide' : `Bookmark ${index}`,
+            url: index === 0 ? 'https://legacy.example.com/react-guide' : `https://example.com/${index}`
+        }));
+
+        chrome.bookmarks.getTree = jest.fn().mockResolvedValue([
+            {
+                id: '0', title: '', children: [
+                    {
+                        id: '1', parentId: '0', title: 'Bookmarks Bar', children: largeChildren
+                    }
+                ]
+            }
+        ]);
+
+        mockCreate.mockResolvedValue({
+            choices: [{
+                message: {
+                    content: JSON.stringify({
+                        matches: [{ id: '2', reason: 'React guide match', score: 0.95 }]
+                    })
+                }
+            }]
+        });
+
+        await findMatchingBookmarks('old react guide');
+
+        const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+        expect(prompt).toContain('Legacy React Guide');
+    });
 });

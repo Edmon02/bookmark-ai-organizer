@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import OpenAI from 'openai';
 import { SecurityManager } from './security';
-import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';
-import { createClient } from './ai-provider';
+import { getProviderPreference, getSelectedOpenRouterModel } from './openrouter';
+import { createChatCompletion, mapCompletionError, stripMarkdownCodeFences } from './llm-completion';
 
 export class LlmClassifier {
     private apiKey: string | undefined = undefined;
@@ -26,7 +25,10 @@ export class LlmClassifier {
         }
     }
 
-    async classifyUrl(url: string, title: string): Promise<{ folderPath: string[], tags: string[] }> {
+    async classifyUrl(
+        url: string,
+        title: string
+    ): Promise<{ folderPath: string[]; tags: string[]; modelFallbackMessage?: string }> {
         // Always reload API key to ensure we have the latest saved key
         await this.loadApiKey();
 
@@ -36,9 +38,6 @@ export class LlmClassifier {
 
         console.log('Using API key (first 10 chars):', this.apiKey.substring(0, 10) + '...');
         await this.loadPreferences();
-
-        const { client, provider } = createClient(this.apiKey, this.providerOverride, this.selectedOpenRouterModel);
-        console.log('Using provider:', provider.name, 'model:', provider.model);
 
         const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and title to determine a logical folder structure and relevant tags. Use emojis in folder names to make them visually distinct and intuitive. Follow these guidelines:
 
@@ -82,45 +81,25 @@ export class LlmClassifier {
 }`;
 
         try {
-            const attemptClassification = async (): Promise<string> => {
-                const completion = await client.chat.completions.create({
-                    model: provider.model,
-                    messages: [{ role: 'user', content: prompt }],
-                    max_tokens: 300,
-                    temperature: 0.2
-                });
-                return completion.choices[0].message.content || '';
-            };
+            const { completion, provider, fallbackModel } = await createChatCompletion({
+                apiKey: this.apiKey,
+                providerOverride: this.providerOverride,
+                selectedOpenRouterModel: this.selectedOpenRouterModel,
+                messages: [{ role: 'user', content: prompt }],
+                maxTokens: 300,
+                temperature: 0.2
+            });
 
-            let retried = false;
-            let result: string | undefined;
-            try {
-                console.log(`Using ${provider.name} for classification (model=${provider.model})`);
-                result = await attemptClassification();
-            } catch (err) {
-                if (provider.name === 'OpenRouter' && err instanceof OpenAI.APIError && err.status === 404 && !retried) {
-                    console.warn('OpenRouter model returned 404; attempting fallback model. Original model:', provider.model);
-                    retried = true;
-                    await clearSelectedOpenRouterModel();
-                    const apiKey = this.apiKey!;
-                    const fallback = await chooseDefaultOpenRouterModel(apiKey);
-                    if (fallback) {
-                        provider.model = fallback;
-                        console.log('Retrying with fallback OpenRouter model:', fallback);
-                        await setSelectedOpenRouterModel(fallback);
-                        result = await attemptClassification();
-                    } else {
-                        throw new Error('No fallback OpenRouter model available.');
-                    }
-                } else {
-                    throw err;
-                }
+            console.log('Using provider:', provider.name, 'model:', provider.model);
+            if (fallbackModel) {
+                console.warn('OpenRouter model returned 404; switched to fallback model:', fallbackModel);
             }
 
+            const result = completion.choices[0]?.message?.content || '';
             if (!result) {
                 throw new Error('No response content received from AI provider');
             }
-            const cleanResult = result.replace(/```json\n?|\n?```/g, '').trim();
+            const cleanResult = stripMarkdownCodeFences(result);
             const parsed = JSON.parse(cleanResult);
             if (!parsed.folderPath || !Array.isArray(parsed.folderPath)) {
                 throw new Error('Invalid response format: missing folderPath');
@@ -128,23 +107,16 @@ export class LlmClassifier {
             console.log('Classification successful:', parsed);
             return {
                 folderPath: parsed.folderPath.slice(0, 3),
-                tags: parsed.tags || []
+                tags: parsed.tags || [],
+                ...(fallbackModel
+                    ? {
+                        modelFallbackMessage: `OpenRouter switched to "${fallbackModel}" because the previous model could not handle chat requests.`
+                    }
+                    : {})
             };
         } catch (error: unknown) {
             console.error('Classification error:', error);
-            if (error instanceof OpenAI.APIError) {
-                if (error.status === 401) {
-                    throw new Error('Invalid API key. Please check your credentials.');
-                } else if (error.status === 429) {
-                    throw new Error('Rate limit exceeded. Please try again later.');
-                } else if (error.status === 403) {
-                    throw new Error('API access forbidden. Check your API key permissions.');
-                } else {
-                    throw new Error(`API Error (${error.status}): ${error.message}`);
-                }
-            }
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-            throw new Error(`Classification failed: ${errorMessage}`);
+            throw new Error(`Classification failed: ${mapCompletionError(error).message}`);
         }
     }
 }

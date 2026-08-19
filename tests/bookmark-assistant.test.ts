@@ -17,7 +17,27 @@ function mockBookmarkTree() {
             id: '0', title: '', children: [
                 {
                     id: '1', parentId: '0', title: 'Bookmarks Bar', children: [
-                        { id: '2', parentId: '1', title: 'Example', url: 'https://example.com' }
+                        { id: '2', parentId: '1', title: 'Example', url: 'https://example.com' },
+                        {
+                            id: '10',
+                            parentId: '1',
+                            title: 'Education',
+                            children: [
+                                {
+                                    id: '11',
+                                    parentId: '10',
+                                    title: 'Courses',
+                                    children: [
+                                        {
+                                            id: '12',
+                                            parentId: '11',
+                                            title: 'Deep Bookmark',
+                                            url: 'https://deep.example.com'
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
                     ]
                 }
             ]
@@ -87,6 +107,38 @@ describe('bookmark-assistant chat', () => {
 
         const result = await chat([{ role: 'user', content: 'delete something fake' }]);
         expect(result.proposedActions).toHaveLength(0);
+    });
+
+    test('list_bookmarks returns deepest bookmarks first for organized-library requests', async () => {
+        mockCreate
+            .mockResolvedValueOnce({
+                choices: [{
+                    message: {
+                        content: '',
+                        tool_calls: [{
+                            id: 'call_1',
+                            type: 'function',
+                            function: {
+                                name: 'list_bookmarks',
+                                arguments: JSON.stringify({ sort: 'depth', limit: 2 })
+                            }
+                        }]
+                    }
+                }]
+            })
+            .mockResolvedValueOnce({ choices: [{ message: { content: 'Here are the deepest bookmarks.' } }] });
+
+        const result = await chat([{ role: 'user', content: 'show me the top 2 most organized bookmarks' }]);
+
+        expect(result).toEqual({ content: 'Here are the deepest bookmarks.', proposedActions: [] });
+
+        const secondRequest = mockCreate.mock.calls[1][0];
+        const toolMessage = secondRequest.messages.find((message: any) => message.role === 'tool');
+        const payload = JSON.parse(toolMessage.content);
+
+        expect(payload.results).toHaveLength(2);
+        expect(payload.results[0]).toMatchObject({ id: '12', title: 'Deep Bookmark', depth: 3 });
+        expect(payload.results[1]).toMatchObject({ id: '2', title: 'Example', depth: 1 });
     });
 });
 

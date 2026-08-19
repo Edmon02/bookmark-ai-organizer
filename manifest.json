@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "AI Bookmark Organizer",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "AI-powered bookmark classification and organization",
     "permissions": [
         "bookmarks",
@@ -14,7 +14,8 @@
         "https://api.moonshot.ai/*",
         "https://api.moonshot.cn/*",
         "https://api.x.ai/*",
-        "https://openrouter.ai/*"
+        "https://openrouter.ai/*",
+        "https://api.groq.com/*"
     ],
     "background": {
         "service_worker": "src/background/service-worker.ts"

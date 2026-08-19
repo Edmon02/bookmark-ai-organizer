@@ -2,9 +2,9 @@
 // Semantic search over the user's existing bookmarks using an LLM to rank matches for a free-text description.
 import { SecurityManager } from './security';
 import { getProviderPreference, getSelectedOpenRouterModel } from './openrouter';
-import { createClient } from './ai-provider';
 import { BookmarkManager, FlatBookmark } from './bookmark-manager';
 import { getAllTags } from './bookmark-tags';
+import { createChatCompletion, stripMarkdownCodeFences } from './llm-completion';
 
 export interface SearchContextItem extends FlatBookmark {
     tags: string[];
@@ -15,15 +15,59 @@ export interface BookmarkMatch extends SearchContextItem {
     score: number;
 }
 
-// Cap how many bookmarks we send to the LLM in one request to keep prompts within reasonable token limits.
-const MAX_CONTEXT_ITEMS = 300;
 const MAX_RESULTS = 5;
+const MAX_LLM_CANDIDATES = 120;
 
-export async function buildSearchContext(bookmarkManager: BookmarkManager = new BookmarkManager()): Promise<SearchContextItem[]> {
+export async function buildSearchContext(
+    bookmarkManager: BookmarkManager = new BookmarkManager()
+): Promise<SearchContextItem[]> {
     const [flat, tags] = await Promise.all([bookmarkManager.getFlatIndex(), getAllTags()]);
-    const items = flat.map(b => ({ ...b, tags: tags[b.id] || [] }));
-    // Most-recently-created bookmarks tend to have larger ids; keep the tail if the list is too large.
-    return items.length > MAX_CONTEXT_ITEMS ? items.slice(-MAX_CONTEXT_ITEMS) : items;
+    return flat.map(b => ({ ...b, tags: tags[b.id] || [] }));
+}
+
+function selectSearchCandidates(context: SearchContextItem[], description: string): SearchContextItem[] {
+    if (context.length <= MAX_LLM_CANDIDATES) {
+        return context;
+    }
+
+    const terms = description
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(term => term.length >= 3);
+
+    if (!terms.length) {
+        return context.slice(0, MAX_LLM_CANDIDATES);
+    }
+
+    const ranked = [...context]
+        .map(item => {
+            const title = item.title.toLowerCase();
+            const url = item.url.toLowerCase();
+            const path = item.path.join(' / ').toLowerCase();
+            const tags = item.tags.join(' ').toLowerCase();
+
+            const score = terms.reduce((total, term) => {
+                let matchScore = 0;
+                if (title.includes(term)) matchScore += 4;
+                if (tags.includes(term)) matchScore += 3;
+                if (path.includes(term)) matchScore += 2;
+                if (url.includes(term)) matchScore += 1;
+                return total + matchScore;
+            }, 0);
+
+            return { item, score };
+        })
+        .filter(entry => entry.score > 0)
+        .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title));
+
+    if (ranked.length >= MAX_RESULTS) {
+        return ranked.slice(0, MAX_LLM_CANDIDATES).map(entry => entry.item);
+    }
+
+    return [
+        ...ranked.map(entry => entry.item),
+        ...context.filter(item => !ranked.some(entry => entry.item.id === item.id)).slice(0, MAX_LLM_CANDIDATES - ranked.length)
+    ];
 }
 
 export async function findMatchingBookmarks(description: string): Promise<BookmarkMatch[]> {
@@ -41,13 +85,12 @@ export async function findMatchingBookmarks(description: string): Promise<Bookma
     if (!context.length) {
         return [];
     }
+    const candidates = selectSearchCandidates(context, trimmedDescription);
 
     const providerOverride = await getProviderPreference();
     const selectedOpenRouterModel = await getSelectedOpenRouterModel();
-    const { client, provider } = createClient(apiKey, providerOverride, selectedOpenRouterModel);
-
     // Only "id" is trusted from the model's response; title/url/path/tags are always looked up locally afterward.
-    const compactIndex = context.map(item => ({ id: item.id, title: item.title, url: item.url, path: item.path, tags: item.tags }));
+    const compactIndex = candidates.map(item => ({ id: item.id, title: item.title, url: item.url, path: item.path, tags: item.tags }));
 
     const prompt = `You are helping a user find a bookmark they saved earlier from a natural-language description of the page.
 
@@ -65,15 +108,17 @@ Return the top ${MAX_RESULTS} most likely matching bookmarks as strict JSON only
 
 Only include ids that appear in the bookmarks list above. If nothing is a plausible match, return {"matches": []}.`;
 
-    const completion = await client.chat.completions.create({
-        model: provider.model,
+    const { completion } = await createChatCompletion({
+        apiKey,
+        providerOverride,
+        selectedOpenRouterModel,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        maxTokens: 500,
         temperature: 0.2
     });
 
     const raw = completion.choices[0]?.message?.content || '';
-    const clean = raw.replace(/```json\n?|\n?```/g, '').trim();
+    const clean = stripMarkdownCodeFences(raw);
 
     let parsed: { matches?: Array<{ id: string; reason: string; score: number }> };
     try {

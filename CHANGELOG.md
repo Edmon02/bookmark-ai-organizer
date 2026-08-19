@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and adheres to Semantic Versioning (SemVer).
 
+## [1.2.0] - 2026-08-20
+### Added
+- Saved-page detection in the popup with folder path visibility and a direct Reveal action.
+- Natural-language bookmark search and a dedicated Search & AI Chat management page.
+- Safe AI bookmark management tools that propose move, rename, delete, create-folder, and merge-folder actions before applying them.
+- Shared LLM completion handling with OpenRouter model fallback coverage across classification, search, and chat.
+
+### Changed
+- Reworked the bookmark chat assistant to use read-only listing and lookup tools instead of dumping the entire library into the prompt.
+- Improved OpenRouter model selection by filtering likely batch-only models and auto-healing stale saved selections.
+- Switched project scripts and release guidance to Bun-only workflows.
+
+### Fixed
+- Prevented duplicate saves when the current page is already bookmarked.
+- Fixed false success messaging in the popup when bookmark creation fails.
+- Improved semantic search coverage for large bookmark libraries by ranking candidates instead of trimming to recent items only.
+- Added the missing Groq host permission in the extension manifest.
+
 ## [1.1.0] - 2025-09-20
 ### Added
 - OpenRouter provider selection with dynamic model fetch and caching.
@@ -37,10 +55,10 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning (SemV
 1. Update dependencies (optional) & run tests.
 2. Update `CHANGELOG.md` with new version section.
 3. Bump version in `package.json`.
-4. Build extension: `npm run build`.
+4. Build extension: `bun run build`.
 5. Smoke test classification with at least 2 providers.
 6. Create git tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push --tags`.
-7. Package zip for store: `npm run build:store`.
+7. Package zip for store: `bun run build:store`.
 8. Draft release notes (use CHANGELOG content).
 
 ### Release Notes Template

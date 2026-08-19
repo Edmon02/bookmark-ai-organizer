@@ -1,128 +1,87 @@
 # AI Bookmark Organizer
 
-A Chrome extension that uses an AI (Grok or Moonshot) to classify and organize bookmarks.
+AI-powered Chrome extension for saving, finding, and reorganizing bookmarks with natural language.
 
-## 🚀 Quick Start
+## Features
 
-1. **Install Dependencies**
+- Classify the current page into a bookmark folder path with AI-generated tags.
+- Detect when the current page is already saved and show its bookmark path immediately.
+- Reveal the saved bookmark directly in `chrome://bookmarks/`.
+- Search bookmarks by describing the page in plain language.
+- Chat with your bookmark library to find, review, and reorganize items.
+- Require explicit Apply confirmation before any AI-suggested bookmark change is executed.
+- Support OpenRouter, OpenAI, Groq, Moonshot, Grok, or auto-detected providers.
+
+## Quick Start
+
+1. Install dependencies:
    ```bash
-   npm install
+   bun install
    ```
-
-2. **Build Extension**
+2. Build the extension:
    ```bash
-   npm run build
+   bun run build
    ```
+3. Open `chrome://extensions/`, enable Developer Mode, and load the `dist` folder as an unpacked extension.
+4. Open the popup, save your API key, and optionally choose a provider and model.
 
-3. **Load Extension**
-   - Open `chrome://extensions/`
-   - Enable Developer Mode
-   - Load `dist` folder
+## Using The Extension
 
-4. **Configure API Key**
-   - Obtain a Grok API key from https://x.ai/api
-   - Enter in the extension's Settings panel
+### Save the current page
 
-## 📋 Features
-- One-click URL classification
-- Automatic bookmark folder creation
-- Secure API key storage
-- Simple and intuitive UI
+- Open the popup on any page.
+- If the page is already bookmarked, the popup shows where it is saved and enables `Reveal`.
+- If the page is not saved, click `Classify & Save`.
 
-## 🔒 Privacy
-- All data processed locally except for LLM API calls.
-- API keys are stored securely using Chrome Storage.
+### Search by description
 
-## 🛠️ Troubleshooting
-- Ensure a valid API key is configured.
-- Check internet connectivity for API calls.
+Open `Search & AI Chat`, then describe the page you want to find. Example prompts:
 
-Organize bookmarks automatically using an AI classifier that infers folder hierarchy and tags.
+- `an article about climate policy I saved last month`
+- `the React docs page about hooks`
+- `that GitHub repo for Chrome extension examples`
 
-## New: OpenRouter Provider & Model Selection
-You can now select `OpenRouter` as a provider and choose from its available models.
+### Chat with bookmarks
 
-### How It Works
-1. Open the extension popup and expand `Settings`.
-2. Enter and save your API key (OpenRouter keys usually begin with `sk-or-v1-`).
-3. Choose `OpenRouter` in the `Provider` dropdown (or leave on `Auto Detect`).
-4. When `OpenRouter` is selected, a model dropdown appears. The extension fetches models from `https://openrouter.ai/api/v1/models`.
-5. Pick a model—your choice is persisted and used for subsequent bookmark classifications.
+The chat view is designed for search and safe reorganization. Example prompts:
 
-### Caching
-- Model list cached for 15 minutes in `chrome.storage.local`.
-- Manual refresh available via the ↻ button.
-- If fetching fails, a stale cached list (if present) is used.
+- `Show me the top 10 most organized bookmarks`
+- `Find the bookmark about TypeScript decorators`
+- `Move my Python bookmarks into a new folder called Learning / Python`
+- `Which bookmarks are deeply nested and should probably be simplified?`
 
-### Error Handling
-| Scenario | Behavior |
-|----------|----------|
-| Invalid key (401) | Displays error in model status; keeps stale list if available |
-| Rate limit (429) | Shows rate limit message; does not clear existing list |
-| Network failure | Falls back to cached list; marks status accordingly |
-| No models returned | Displays "No models available" |
-| No key saved yet | Prompts to save API key before loading models |
-| Deprecated / 404 model | Automatically clears selection, chooses fallback stable model, retries once |
+Bookmark edits are proposed first. Nothing changes until you click `Apply`.
 
-### Security Notes
-- API key stored (base64 encoded) in `chrome.storage.sync` (demo purpose—replace with stronger encryption for production).
-- Model metadata trimmed to essentials (id, name, description, context length, architecture reference).
-- No API keys or raw model lists are sent to analytics (future telemetry will hash model IDs if needed).
+## OpenRouter Notes
 
-### Selecting Other Providers
-If you choose another provider (OpenAI, Groq, Moonshot, Grok) or `Auto Detect`, the OpenRouter model UI is hidden. Auto detection still works based on key pattern if you prefer not to select a provider manually.
+- The model list is cached for 15 minutes in `chrome.storage.local`.
+- The picker filters out obviously batch-only or non-chat models.
+- If the selected model returns a 404 or cannot serve chat requests, the extension clears that selection, picks a stable fallback model, persists it, and retries once.
 
 ## Development
-Install dependencies and build:
+
+Run the main development commands with Bun:
+
 ```bash
-npm install
-npm run build
-```
-Load the `dist` directory as an unpacked extension in Chrome.
-
-## Fallback Strategy
-If the selected OpenRouter model returns a 404 (e.g., alpha/stealth model retired), the extension:
-1. Clears the invalid selection.
-2. Fetches the current model list.
-3. Chooses the first available from a preference list: `openai/gpt-4o-mini`, `openai/gpt-4o`, `anthropic/claude-*`, `google/gemini-*`, `meta/llama-*`.
-4. Persists the new model and retries classification once.
-
-If no model can be chosen, classification fails with a descriptive error.
-
-## Optional Enhancements (Not Yet Implemented)
-- Search/filter in large model lists.
-- Pagination or grouping (OpenRouter may expose many models).
-- Model capability badges (e.g., context size, vision support).
-- Analytics events for model fetch success/failure and selection changes.
-- Fallback model heuristics (auto choose nearest GPT-4 / Claude class if selection invalid).
-
-## Testing
-Run unit tests:
-```bash
-npm test
+bun run type-check
+bun run test
+bun run build
 ```
 
-## Acceptance Criteria Summary
-- Provider dropdown appears in settings.
-- Selecting `OpenRouter` triggers model fetch (with caching + manual refresh).
-- Model selection persisted and applied to classification calls.
-- Graceful handling of 401, 429, offline, and empty responses.
-- No runtime TypeScript errors in modified files.
+## Release Notes
+
+Generate release notes for a version from `CHANGELOG.md`:
+
+```bash
+bun run release:notes -- 1.2.0
+```
+
+## Privacy
+
+- Bookmark operations happen locally in the extension.
+- Only the selected AI provider receives bookmark metadata needed for classification, search, or chat.
+- API keys are currently stored in Chrome storage using base64 encoding. This is acceptable for local development, but stronger encryption should be added before a production-grade release.
 
 ## License
-Licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
 
-"AI Bookmark Organizer" is distributed on an "AS IS" basis without warranties or conditions of any kind.
-
-### Release Notes Automation
-Generate release notes for a given version (uses `CHANGELOG.md`):
-```bash
-npm run release:notes -- 1.1.0
-```
-Outputs the exact section for easy copy into a GitHub Release.
-
-### SPDX Headers
-Source files now include SPDX identifiers (`SPDX-License-Identifier: Apache-2.0`) to simplify automated license scanning.
-
-### Releases
-See `RELEASING.md` for the full workflow. Tagging `vX.Y.Z` triggers an automated GitHub Release with the packaged `extension.zip`.
+Licensed under the Apache License, Version 2.0. See `LICENSE` for details.
