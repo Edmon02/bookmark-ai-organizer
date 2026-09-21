@@ -69,10 +69,10 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning (SemV
 1. Update dependencies (optional) & run tests.
 2. Update `CHANGELOG.md` with new version section.
 3. Bump version in `package.json`.
-4. Build extension: `npm run build`.
+4. Build extension: `bun run build`.
 5. Smoke test classification with at least 2 providers.
 6. Create git tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push --tags`.
-7. Package zip for store: `npm run build:store`.
+7. Package zip for store: `bun run build:store`.
 8. Draft release notes (use CHANGELOG content).
 
 ### Release Notes Template

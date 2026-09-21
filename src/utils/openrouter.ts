@@ -8,6 +8,7 @@ export interface OpenRouterModel {
   description?: string;
   context_length?: number;
   architecture?: { tokenizer?: string; modality?: string };
+  supported_parameters?: string[];
 }
 
 interface ModelCacheEnvelope {
@@ -24,6 +25,7 @@ const MAX_MODEL_FETCH_RETRIES = 2;
 const FALLBACK_PREFERENCE: string[] = [
   'openai/gpt-4o-mini',
   'openai/gpt-4o',
+  'anthropic/claude-3.7-sonnet',
   'anthropic/claude-3.5-sonnet',
   'anthropic/claude-3-opus',
   'anthropic/claude-3-haiku',
@@ -31,6 +33,30 @@ const FALLBACK_PREFERENCE: string[] = [
   'meta/llama-3.1-70b-instruct',
   'meta/llama-3.1-8b-instruct'
 ];
+
+function isBatchOnlyModel(model: OpenRouterModel): boolean {
+  const haystack = `${model.id} ${model.name || ''} ${model.description || ''}`.toLowerCase();
+  return /\bbatch\b|jsonl|asynchronous|async job|offline processing/.test(haystack);
+}
+
+function isLikelyChatModel(model: OpenRouterModel): boolean {
+  const haystack = `${model.id} ${model.name || ''} ${model.description || ''}`.toLowerCase();
+  if (isBatchOnlyModel(model)) {
+    return false;
+  }
+  if (model.supported_parameters?.includes('messages')) {
+    return true;
+  }
+  return /(gpt|claude|llama|gemini|chat|instruct|sonnet|haiku|opus|kimi|qwen|mistral)/i.test(haystack);
+}
+
+function sanitizeModels(models: OpenRouterModel[]): OpenRouterModel[] {
+  return models.filter((model) =>
+    typeof model.id === 'string' &&
+    model.id.includes('/') &&
+    isLikelyChatModel(model)
+  );
+}
 
 async function getLocalWithSyncFallback(key: string): Promise<string | null> {
   const localResult = await chrome.storage.local.get(key);
@@ -66,10 +92,10 @@ export async function fetchOpenRouterModels(apiKey: string, forceRefresh = false
       name: m.name || m.id,
       description: m.description,
       context_length: m.context_length,
-      architecture: m.architecture
+      architecture: m.architecture,
+      supported_parameters: Array.isArray(m.supported_parameters) ? m.supported_parameters : undefined
     })) : [];
-    // Basic sanity filter: ensure id contains vendor/model pattern
-    const filtered = models.filter(m => typeof m.id === 'string' && m.id.includes('/'));
+    const filtered = sanitizeModels(models);
     await cacheModels(filtered);
     return filtered;
   } catch (e: unknown) {
@@ -134,7 +160,7 @@ export async function chooseDefaultOpenRouterModel(apiKey: string): Promise<stri
       if (models.some(m => m.id === preferred)) return preferred;
     }
     // Otherwise pick first model that appears to be chat-capable (heuristic: contains 'gpt' or 'claude' or 'llama' or 'gemini')
-    const heuristic = models.find(m => /(gpt|claude|llama|gemini)/i.test(m.id));
+    const heuristic = models.find(isLikelyChatModel);
     return heuristic ? heuristic.id : models[0].id;
   } catch {
     return null;

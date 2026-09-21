@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Simple release notes extractor from CHANGELOG.md
-// Usage: npm run release:notes -- <version>
+// Usage: bun run release:notes -- <version>
 const fs = require('fs');
 const path = require('path');
 

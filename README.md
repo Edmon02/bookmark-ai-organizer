@@ -37,11 +37,11 @@ AI Bookmark Organizer helps you keep browser bookmarks clean and searchable with
 
 1. Install dependencies
    ```bash
-   npm install
+   bun install
    ```
 2. Build extension
    ```bash
-   npm run build
+   bun run build
    ```
 3. Load unpacked extension
    - Open `chrome://extensions/`
@@ -77,11 +77,11 @@ AI Bookmark Organizer helps you keep browser bookmarks clean and searchable with
 ## Development
 
 ### Scripts
-- `npm run type-check` - TypeScript checks.
-- `npm test` - unit tests.
-- `npm run build` - production webpack build.
-- `npm run build:store` - clean, build, and package `extension.zip`.
-- `npm run release:notes -- <version>` - generate release notes from changelog.
+- `bun run type-check` - TypeScript checks.
+- `bun run test` - unit tests.
+- `bun run build` - production webpack build.
+- `bun run build:store` - clean, build, and package `extension.zip`.
+- `bun run release:notes -- <version>` - generate release notes from changelog.
 
 ### Test coverage includes
 - Bookmark creation/move/path behavior.
@@ -94,13 +94,13 @@ AI Bookmark Organizer helps you keep browser bookmarks clean and searchable with
 2. Bump versions in `manifest.json` and `package.json`.
 3. Run:
    ```bash
-   npm run type-check
-   npm test
-   npm run build
+   bun run type-check
+   bun run test
+   bun run build
    ```
 4. Create release artifact:
    ```bash
-   npm run build:store
+   bun run build:store
    ```
 5. Open PR and publish release notes.
 

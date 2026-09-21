@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>AI Bookmark Organizer — Search &amp; Chat</title>
+    <link rel="stylesheet" href="manage.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 AI Bookmark Organizer</h1>
+            <nav class="tabs">
+                <button class="tab-btn active" data-tab="search">🔍 Search</button>
+                <button class="tab-btn" data-tab="chat">💬 Chat</button>
+            </nav>
+        </header>
+
+        <section id="tab-search" class="tab-panel active">
+            <h2>Search by description</h2>
+            <p class="hint">Describe the page you're looking for and the AI will find your best-matching saved
+                bookmarks.</p>
+            <textarea id="search-description" rows="3"
+                placeholder="e.g. an article about climate change I saved a few weeks ago"></textarea>
+            <button id="search-btn" class="btn btn-accent">Search</button>
+            <div id="search-status" class="status-text"></div>
+            <ul id="search-results" class="result-list"></ul>
+        </section>
+
+        <section id="tab-chat" class="tab-panel">
+            <h2>Chat with your bookmarks</h2>
+            <p class="hint">Ask the AI to find, move, rename, delete, or reorganize your bookmarks. Any change is
+                proposed first — nothing happens until you click Apply.</p>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input-row">
+                <input id="chat-input" type="text" placeholder="Type a message…">
+                <button id="chat-send" class="btn btn-accent">Send</button>
+            </div>
+        </section>
+    </div>
+    <script src="manage.js"></script>
+</body>
+
+</html>

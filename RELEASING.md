@@ -15,13 +15,13 @@ Guidelines:
 2. Bump `version` in `package.json` accordingly.
 3. Ensure tests & type checks pass:
 ```bash
-npm ci
-npm run type-check
-npm test -- --passWithNoTests
+bun install --frozen-lockfile
+bun run type-check
+bun run test -- --passWithNoTests
 ```
 4. Build locally & smoke test:
 ```bash
-npm run build
+bun run build
 ```
 
 ## 3. Tag and Push
@@ -47,15 +47,15 @@ The workflow will:
 If automation fails:
 1. Run locally:
    ```bash
-   npm ci
-   npm run build:store
+   bun install --frozen-lockfile
+   bun run build:store
    ```
 2. Draft a release at: GitHub UI → Releases → Draft new release.
 3. Upload `extension.zip` and paste the relevant `CHANGELOG` section.
 
 ## 6. Generating Release Notes Locally
 ```bash
-npm run release:notes -- 1.1.0
+bun run release:notes -- 1.1.0
 ```
 
 ## 7. Post-Release Tasks

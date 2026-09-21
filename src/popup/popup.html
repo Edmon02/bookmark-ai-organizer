@@ -68,6 +68,9 @@
         <div class="ob-get-key">
           <p class="ob-get-key-label">Need a free API key?</p>
           <div class="ob-provider-links">
+            <button class="ob-provider-btn" data-url="https://console.typesafe.ai/home">
+              TypeSafe Jev <span class="ob-badge">structured</span>
+            </button>
             <button class="ob-provider-btn" data-url="https://openrouter.ai/keys">
               OpenRouter <span class="ob-badge">free tier</span>
             </button>
@@ -100,7 +103,7 @@
               type="password"
               id="ob-api-key"
               class="input"
-              placeholder="sk-... or sk-or-v1-..."
+              placeholder="sk-or-v1-..., apikey_..., or sk-..."
               autocomplete="off"
               spellcheck="false"
               aria-describedby="ob-key-hint">
@@ -122,6 +125,7 @@
           </label>
           <select id="ob-provider" class="select" aria-label="Select AI provider">
             <option value="auto">Auto Detect</option>
+            <option value="typesafe">TypeSafe (Jev)</option>
             <option value="openrouter">OpenRouter</option>
             <option value="openai">OpenAI</option>
             <option value="groq">Groq</option>
@@ -191,6 +195,11 @@
             </div>
           </div>
 
+          <div class="saved-status hidden" id="saved-status">
+            <span id="saved-path"></span>
+            <button class="btn btn-primary btn-sm" id="reveal-bookmark" type="button">Reveal</button>
+          </div>
+
           <!-- Classification result (revealed after success) -->
           <div class="result-area hidden" id="result-area" aria-live="polite">
             <div class="result-folder" id="result-folder"></div>
@@ -212,6 +221,12 @@
               <line x1="7" y1="7" x2="7.01" y2="7" />
             </svg>
             Classify &amp; Save
+          </button>
+          <button class="btn btn-ghost btn-full" id="btn-reorganize" type="button">
+            Reorganize all bookmarks
+          </button>
+          <button class="btn btn-ghost btn-full" id="btn-search-chat" type="button">
+            Search and AI chat
           </button>
         </div>
 
@@ -259,13 +274,17 @@
             <span>API Key</span>
           </div>
 
-          <div class="key-status-row">
+            <div class="key-status-row">
             <div class="key-badge" id="key-badge" role="status">
               <span class="key-badge-dot" aria-hidden="true"></span>
               <span id="key-badge-text">Checking...</span>
             </div>
-            <button class="btn btn-sm btn-ghost" id="btn-change-key" type="button">Change</button>
+            <div class="key-status-actions">
+              <button class="btn btn-sm btn-ghost" id="btn-change-key" type="button">Change</button>
+              <button class="btn btn-sm btn-ghost btn-danger" id="btn-remove-key" type="button">Remove</button>
+            </div>
           </div>
+          <div class="provider-key-list" id="provider-key-list"></div>
 
           <div class="hidden" id="key-form">
             <div class="key-form-input-row">
@@ -305,6 +324,7 @@
             <label class="input-label" for="provider-select">Provider</label>
             <select id="provider-select" class="select">
               <option value="auto">Auto Detect</option>
+              <option value="typesafe">TypeSafe (Jev)</option>
               <option value="openrouter">OpenRouter</option>
               <option value="openai">OpenAI</option>
               <option value="groq">Groq</option>
@@ -312,6 +332,9 @@
               <option value="grok">Grok</option>
             </select>
           </div>
+          <p class="input-hint-text hidden" id="typesafe-help">
+            Jev chooses among your existing folders with calibrated confidence. Use Reorganize to preview a full-library sort before anything moves.
+          </p>
 
           <div class="input-group hidden" id="openrouter-model-section">
             <div class="label-row">
@@ -448,7 +471,7 @@
         </div>
         <div class="detail-tags" id="detail-tags"></div>
         <div class="detail-reclassify">
-          <label class="input-label" for="detail-model-select">Re-classify with a different OpenRouter model</label>
+          <label class="input-label" id="detail-model-label" for="detail-model-select">Re-classify with a different OpenRouter model</label>
           <select id="detail-model-select" class="select" aria-label="Pick a model for re-classify">
             <option value="">Loading...</option>
           </select>

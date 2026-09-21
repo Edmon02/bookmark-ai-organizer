@@ -539,6 +539,29 @@ body {
   cursor: not-allowed;
 }
 
+.saved-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--c-success-10);
+  color: var(--c-success);
+  font-size: 12px;
+}
+
+#classify-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.saved-status span {
+  overflow-wrap: anywhere;
+}
+
 /* Progress */
 .progress-area {
   display: flex;
@@ -638,6 +661,42 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.key-status-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.provider-key-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.provider-key-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.provider-key-hint {
+  color: var(--c-text-3);
+}
+
+.btn-danger {
+  color: var(--c-error);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--c-error-10);
+  color: var(--c-error);
 }
 
 .key-badge {

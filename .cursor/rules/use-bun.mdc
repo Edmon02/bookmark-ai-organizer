@@ -1,0 +1,16 @@
+---
+description: Use Bun as the only package manager for this project
+alwaysApply: true
+---
+
+# Package manager
+
+Use Bun only. Do not use npm, npx, yarn, pnpm, or their lockfiles.
+
+- Install: `bun install`
+- Reproducible install: `bun install --frozen-lockfile`
+- Scripts: `bun run <script>` (for example `bun run test`, `bun run build`)
+- One-off CLIs: `bunx <tool>` (for example `bunx playwright test`)
+- Lockfile: `bun.lock` only. Do not create or commit `package-lock.json`, `yarn.lock`, or `pnpm-lock.yaml`.
+
+`bun test` is Bun's own test runner. This repo's Jest suite is `bun run test`.

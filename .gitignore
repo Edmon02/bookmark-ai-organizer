@@ -1,6 +1,11 @@
 # dependencies (bun install)
 node_modules
 
+# other package managers are not used
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # output
 out
 dist
@@ -33,3 +38,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Playwright
+test-results
+playwright-report
+blob-report
+playwright/.cache
