@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reorganize bookmarks</title>
+  <link rel="stylesheet" href="reorganize.css">
+</head>
+
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">TypeSafe Jev</p>
+        <h1>Reorganize your bookmarks</h1>
+        <p class="lede">Jev scores each bookmark against your folders. Nothing moves until you apply the preview.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="btn btn-primary" id="btn-scan" type="button">Scan library</button>
+        <button class="btn btn-ghost hidden" id="btn-cancel" type="button">Cancel</button>
+      </div>
+    </header>
+
+    <section class="status-card" id="status-card">
+      <div class="status-row">
+        <strong id="status-title">Ready to scan</strong>
+        <span id="status-meta">Jev will keep bookmarks where the current folder already fits.</span>
+      </div>
+      <div class="progress-track hidden" id="progress-track">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+    </section>
+
+    <section class="toolbar hidden" id="toolbar">
+      <label class="check">
+        <input type="checkbox" id="select-high-confidence" checked>
+        Include high-confidence moves
+      </label>
+      <label class="check">
+        <input type="checkbox" id="select-review" checked>
+        Include suggestions to review
+      </label>
+      <label class="check">
+        <input type="checkbox" id="show-stays">
+        Show bookmarks that stay
+      </label>
+      <div class="toolbar-actions">
+        <button class="btn btn-primary" id="btn-apply" type="button">Apply selected moves</button>
+        <button class="btn btn-ghost hidden" id="btn-undo" type="button">Undo last apply</button>
+      </div>
+    </section>
+
+    <section class="table-wrap hidden" id="table-wrap">
+      <p class="empty-note hidden" id="empty-note">No moves match these filters.</p>
+      <div id="review-body"></div>
+    </section>
+  </div>
+  <script src="reorganize.js"></script>
+</body>
+
+</html>

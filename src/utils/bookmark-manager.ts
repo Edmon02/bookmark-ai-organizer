@@ -5,6 +5,13 @@ export interface BookmarkCreationResult {
     folderId: string;
 }
 
+export interface FlatBookmark {
+    id: string;
+    title: string;
+    url: string;
+    path: string[];
+}
+
 export interface BookmarkMoveResult {
     bookmark: chrome.bookmarks.BookmarkTreeNode;
     previousFolderPath: string[];
@@ -51,6 +58,65 @@ export class BookmarkManager {
         };
     }
 
+    async moveBookmarkToParent(bookmarkId: string, parentId: string): Promise<chrome.bookmarks.BookmarkTreeNode> {
+        return chrome.bookmarks.move(bookmarkId, { parentId });
+    }
+
+    async findByUrl(url: string): Promise<{ bookmark: chrome.bookmarks.BookmarkTreeNode; path: string[] } | null> {
+        const results = await chrome.bookmarks.search({ url });
+        const bookmark = results.find((item) => item.url === url);
+        if (!bookmark?.id) {
+            return null;
+        }
+        return {
+            bookmark,
+            path: await this.getBookmarkPath(bookmark.id),
+        };
+    }
+
+    async getFlatIndex(): Promise<FlatBookmark[]> {
+        const [rootNode] = await chrome.bookmarks.getTree();
+        const flat: FlatBookmark[] = [];
+        const walk = (node: chrome.bookmarks.BookmarkTreeNode, path: string[]) => {
+            if (node.url && node.id) {
+                flat.push({ id: node.id, title: node.title, url: node.url, path });
+                return;
+            }
+            const childPath = node.id === '0' ? path : [...path, node.title].filter(Boolean);
+            for (const child of node.children || []) {
+                walk(child, childPath);
+            }
+        };
+        walk(rootNode, []);
+        return flat;
+    }
+
+    async moveBookmark(id: string, folderPath: string[]): Promise<chrome.bookmarks.BookmarkTreeNode> {
+        const parentId = await this.ensureFolderPath(folderPath.map((segment) => segment.trim()).filter(Boolean));
+        return chrome.bookmarks.move(id, { parentId });
+    }
+
+    async renameBookmark(id: string, title: string): Promise<chrome.bookmarks.BookmarkTreeNode> {
+        return chrome.bookmarks.update(id, { title });
+    }
+
+    async deleteBookmark(id: string): Promise<void> {
+        await chrome.bookmarks.remove(id);
+    }
+
+    async mergeFolders(sourcePath: string[], targetPath: string[]): Promise<void> {
+        const sourceId = await this.ensureFolderPath(sourcePath);
+        const targetId = await this.ensureFolderPath(targetPath);
+        if (sourceId === targetId) {
+            return;
+        }
+        const children = await chrome.bookmarks.getChildren(sourceId);
+        for (const child of children) {
+            await chrome.bookmarks.move(child.id, { parentId: targetId });
+        }
+        await chrome.bookmarks.remove(sourceId);
+    }
+
     async getBookmarkPath(bookmarkId: string): Promise<string[]> {
         const bookmark = await this.getBookmark(bookmarkId);
         let parentId = bookmark.parentId;
@@ -74,7 +140,7 @@ export class BookmarkManager {
         return path;
     }
 
-    private async ensureFolderPath(path: string[]): Promise<string> {
+    async ensureFolderPath(path: string[]): Promise<string> {
         let currentId = '1'; // Bookmarks menu ID
         for (const folderName of path) {
             const existingFolder = await this.findFolder(currentId, folderName);

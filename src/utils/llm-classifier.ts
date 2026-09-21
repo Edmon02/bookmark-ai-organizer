@@ -1,28 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 import OpenAI from 'openai';
+import {
+    type ClassificationOptions,
+    type ClassificationResult,
+    type ClassificationResultWithMeta,
+} from './classification-types';
+import { classifyWithJev } from './jev-classifier';
+import {
+    chooseDefaultOpenRouterModel,
+    clearSelectedOpenRouterModel,
+    getProviderPreference,
+    getSelectedOpenRouterModel,
+    setSelectedOpenRouterModel,
+} from './openrouter';
+import { detectProviderId, isProviderId, PROVIDER_LABELS, type ProviderId } from './providers';
 import { SecurityManager } from './security';
-import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';
+
+export type {
+    ClassificationOptions,
+    ClassificationResult,
+    ClassificationResultWithMeta,
+};
 
 interface AIProvider {
     name: string;
     baseURL: string;
-    model: string;
-}
-
-export interface ClassificationResult {
-    folderPath: string[];
-    tags: string[];
-    confidence: number;
-}
-
-export interface ClassificationOptions {
-    providerOverride?: string | null;
-    modelOverride?: string | null;
-}
-
-export interface ClassificationResultWithMeta extends ClassificationResult {
-    providerId: string;
-    providerName: string;
     model: string;
 }
 
@@ -34,36 +36,31 @@ export class LlmClassifier {
         openai: {
             name: 'OpenAI',
             baseURL: 'https://api.openai.com/v1',
-            model: 'gpt-3.5-turbo'
+            model: 'gpt-3.5-turbo',
         },
         moonshot: {
             name: 'Moonshot (Kimi)',
             baseURL: 'https://api.moonshot.ai/v1',
-            model: 'kimi-k2-0711-preview'
+            model: 'kimi-k2-0711-preview',
         },
         grok: {
             name: 'Grok',
             baseURL: 'https://api.x.ai/v1',
-            model: 'grok-beta'
+            model: 'grok-beta',
         },
         openrouter: {
             name: 'OpenRouter',
             baseURL: 'https://openrouter.ai/api/v1',
-            // Use a stable widely-available smaller model as initial default; can be overridden dynamically
-            model: 'openai/gpt-4o-mini'
+            model: 'openai/gpt-4o-mini',
         },
         groq: {
             name: 'Groq',
             baseURL: 'https://api.groq.com/openai/v1',
-            model: 'llama-3.3-70b-versatile'
+            model: 'llama-3.3-70b-versatile',
         },
     };
 
     constructor() {}
-
-    private async loadApiKey() {
-        this.apiKey = (await SecurityManager.getApiKey())?.trim();
-    }
 
     private async loadPreferences() {
         try {
@@ -75,21 +72,6 @@ export class LlmClassifier {
         }
     }
 
-    private detectProviderId(apiKey: string): string {
-        if (apiKey.startsWith('gsk_')) {
-            return 'groq';
-        } else if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
-            return 'openai';
-        } else if (apiKey.startsWith('sk-or-v1-') || apiKey.includes('openrouter')) {
-            return 'openrouter';
-        } else if (apiKey.includes('kimi') || apiKey.length > 40) {
-            return 'moonshot';
-        } else if (apiKey.includes('grok') || apiKey.startsWith('xai-')) {
-            return 'grok';
-        }
-        return 'openrouter';
-    }
-
     async classifyUrl(url: string, title: string, options: ClassificationOptions = {}): Promise<ClassificationResult> {
         const result = await this.classifyUrlWithMeta(url, title, options);
         return {
@@ -99,19 +81,26 @@ export class LlmClassifier {
         };
     }
 
-    async classifyUrlWithMeta(url: string, title: string, options: ClassificationOptions = {}): Promise<ClassificationResultWithMeta> {
-        // Always reload API key to ensure we have the latest saved key
-        await this.loadApiKey();
-
-        if (!this.apiKey) {
-            throw new Error('API key not configured. Please save your API key first.');
-        }
-
+    async classifyUrlWithMeta(
+        url: string,
+        title: string,
+        options: ClassificationOptions = {},
+    ): Promise<ClassificationResultWithMeta> {
         await this.loadPreferences();
 
-        const effectiveProviderId = this.resolveProviderId(options.providerOverride);
+        const credentials = await this.resolveCredentials(options.providerOverride);
+        this.apiKey = credentials.apiKey;
+        const effectiveProviderId = credentials.providerId;
+
+        if (effectiveProviderId === 'typesafe') {
+            return classifyWithJev(credentials.apiKey, url, title);
+        }
+
         const baseProvider = this.providers[effectiveProviderId];
-        const provider = { ...baseProvider }; // copy to avoid mutating shared config
+        if (!baseProvider) {
+            throw new Error('No AI provider is configured for this key.');
+        }
+        const provider = { ...baseProvider };
 
         if (effectiveProviderId === 'openrouter') {
             const selectedModel = options.modelOverride ?? this.selectedOpenRouterModel;
@@ -120,7 +109,6 @@ export class LlmClassifier {
             }
         }
 
-        // Create OpenAI client with provider-specific configuration
         const client = new OpenAI({
             apiKey: this.apiKey,
             baseURL: provider.baseURL,
@@ -178,7 +166,7 @@ export class LlmClassifier {
                     model: provider.model,
                     messages: [{ role: 'user', content: prompt }],
                     max_tokens: 300,
-                    temperature: 0.2
+                    temperature: 0.2,
                 });
                 return completion.choices[0].message.content || '';
             };
@@ -226,17 +214,17 @@ export class LlmClassifier {
 
             const rawTags: unknown[] = Array.isArray(parsed.tags) ? parsed.tags : [];
             const tags = rawTags
-                    .filter((tag: unknown): tag is string => typeof tag === 'string')
-                    .map((tag: string) => tag.trim().toLowerCase())
-                    .filter(Boolean)
-                    .slice(0, 5);
+                .filter((tag: unknown): tag is string => typeof tag === 'string')
+                .map((tag: string) => tag.trim().toLowerCase())
+                .filter(Boolean)
+                .slice(0, 5);
 
             const rawConfidence = Number(parsed.confidence);
             const confidence = Number.isFinite(rawConfidence)
                 ? Math.max(0, Math.min(1, rawConfidence))
                 : 0.5;
 
-            const classification: ClassificationResultWithMeta = {
+            return {
                 folderPath,
                 tags,
                 confidence,
@@ -244,8 +232,6 @@ export class LlmClassifier {
                 providerName: provider.name,
                 model: provider.model,
             };
-
-            return classification;
         } catch (error: unknown) {
             if (error instanceof OpenAI.APIError) {
                 if (error.status === 401) {
@@ -263,18 +249,31 @@ export class LlmClassifier {
         }
     }
 
-    private resolveProviderId(overrideProvider?: string | null): string {
-        if (overrideProvider && this.providers[overrideProvider]) {
-            return overrideProvider;
+    private async resolveCredentials(
+        overrideProvider?: string | null,
+    ): Promise<{ providerId: ProviderId; apiKey: string }> {
+        const requested = overrideProvider || this.providerOverride;
+        if (isProviderId(requested)) {
+            const apiKey = await SecurityManager.getApiKeyForProvider(requested);
+            if (!apiKey) {
+                throw new Error(`Save a ${PROVIDER_LABELS[requested]} API key first.`);
+            }
+            return { providerId: requested, apiKey };
         }
 
-        if (this.providerOverride && this.providers[this.providerOverride]) {
-            return this.providerOverride;
+        const auto = await SecurityManager.resolveAutoCredentials();
+        if (auto) {
+            return auto;
         }
 
-        if (!this.apiKey) {
-            return 'openrouter';
+        const leftover = await SecurityManager.getApiKey();
+        if (leftover) {
+            const detected = detectProviderId(leftover);
+            if (detected) {
+                return { providerId: detected, apiKey: leftover };
+            }
         }
-        return this.detectProviderId(this.apiKey);
+
+        throw new Error('API key not configured. Please save your API key first.');
     }
 }

@@ -8,7 +8,9 @@ module.exports = (env, argv) => {
     mode: argv.mode || 'development',
     entry: {
       'background/service-worker': './src/background/service-worker.ts',
-      'popup/popup': './src/popup/popup.ts'
+      'popup/popup': './src/popup/popup.ts',
+      'reorganize/reorganize': './src/reorganize/reorganize.ts',
+      'manage/manage': './src/manage/manage.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -62,6 +64,22 @@ module.exports = (env, argv) => {
           {
             from: 'src/popup/popup.css',
             to: 'popup/popup.css'
+          },
+          {
+            from: 'src/reorganize/reorganize.html',
+            to: 'reorganize/reorganize.html'
+          },
+          {
+            from: 'src/reorganize/reorganize.css',
+            to: 'reorganize/reorganize.css'
+          },
+          {
+            from: 'src/manage/manage.html',
+            to: 'manage/manage.html'
+          },
+          {
+            from: 'src/manage/manage.css',
+            to: 'manage/manage.css'
           },
           {
             from: 'src/icons',

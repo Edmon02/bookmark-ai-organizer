@@ -18,13 +18,15 @@
   "bugs": {
     "url": "https://github.com/Edmon02/bookmark-ai-organizer/issues"
   },
+  "packageManager": "bun@1.3.0",
   "scripts": {
     "build": "webpack --mode=production",
     "build:dev": "webpack --mode=development",
-    "build:store": "npm run clean && npm run build && npm run package",
+    "build:store": "bun run clean && bun run build && bun run package",
     "dev": "webpack --mode=development --watch",
-    "release:notes": "node scripts/release-notes.js",
+    "release:notes": "bun scripts/release-notes.js",
     "test": "jest",
+    "test:e2e": "bun run build && bunx playwright test",
     "clean": "rm -rf dist extension.zip",
     "type-check": "tsc --noEmit",
     "package": "cd dist && zip -r ../extension.zip ."
@@ -34,6 +36,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.0.270",
     "@types/jest": "^29.5.12",
     "copy-webpack-plugin": "^13.0.0",

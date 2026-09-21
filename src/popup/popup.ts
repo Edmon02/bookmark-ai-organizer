@@ -5,6 +5,8 @@ import {
     setProviderPreference,
     setSelectedOpenRouterModel,
 } from '../utils/openrouter';
+import { PROVIDER_LABELS, isProviderId, type ProviderId } from '../utils/providers';
+import { SecurityManager } from '../utils/security';
 
 type View = 'onboarding' | 'main' | 'settings';
 type ToastType = 'success' | 'error' | 'info';
@@ -17,6 +19,7 @@ type RuntimeResponse<T> =
 type SettingsState = {
     hasApiKey: boolean;
     apiKeyHint: string | null;
+    keyedProviders: Array<{ providerId: ProviderId; hint: string }>;
     providerPreference: string | null;
     selectedOpenRouterModel: string | null;
     autoClassifyEnabled: boolean;
@@ -41,12 +44,8 @@ type OpenRouterModelsResponse = {
     models: Array<{ id: string; name?: string }>;
 };
 
-const PROVIDER_LABELS: Record<string, string> = {
-    openrouter: 'OpenRouter',
-    openai: 'OpenAI',
-    groq: 'Groq',
-    moonshot: 'Moonshot',
-    grok: 'Grok',
+const POPUP_PROVIDER_LABELS: Record<string, string> = {
+    ...PROVIDER_LABELS,
 };
 
 class PopupController {
@@ -74,6 +73,9 @@ class PopupController {
     private resultViewDetailsBtn!: HTMLButtonElement;
     private resultReclassifyBtn!: HTMLButtonElement;
     private statusPill!: HTMLElement;
+    private savedStatus!: HTMLElement;
+    private savedPath!: HTMLElement;
+    private revealBookmarkId: string | null = null;
     private statusDot!: HTMLElement;
     private statusText!: HTMLElement;
     private providerChipText!: HTMLElement;
@@ -105,6 +107,10 @@ class PopupController {
     private modelStatus!: HTMLElement;
     private autoClassifyToggle!: HTMLButtonElement;
     private themeToggle!: HTMLButtonElement;
+    private providerKeyList!: HTMLElement;
+    private removeKeyBtn!: HTMLButtonElement;
+    private typesafeHelp!: HTMLElement;
+    private settingsState: SettingsState | null = null;
 
     private currentView: View = 'onboarding';
     private settingsLoadToken = 0;
@@ -144,6 +150,8 @@ class PopupController {
         this.resultTags = this.el('result-tags');
         this.resultViewDetailsBtn = this.el('result-view-details') as HTMLButtonElement;
         this.resultReclassifyBtn = this.el('result-reclassify') as HTMLButtonElement;
+        this.savedStatus = this.el('saved-status');
+        this.savedPath = this.el('saved-path');
         this.statusPill = this.el('status-pill');
         this.statusDot = this.el('status-dot');
         this.statusText = this.el('status-text');
@@ -174,6 +182,9 @@ class PopupController {
         this.modelStatus = this.el('model-status');
         this.autoClassifyToggle = this.el('auto-classify-toggle') as HTMLButtonElement;
         this.themeToggle = this.el('theme-toggle') as HTMLButtonElement;
+        this.providerKeyList = this.el('provider-key-list');
+        this.removeKeyBtn = this.el('btn-remove-key') as HTMLButtonElement;
+        this.typesafeHelp = this.el('typesafe-help');
     }
 
     private bindEvents(): void {
@@ -205,6 +216,10 @@ class PopupController {
         this.el('btn-change-key').addEventListener('click', () => this.showKeyForm());
         this.el('btn-cancel-key').addEventListener('click', () => this.hideKeyForm());
         this.el('save-api-key').addEventListener('click', () => void this.saveApiKey());
+        this.el('btn-remove-key').addEventListener('click', () => void this.removeSelectedKey());
+        this.el('btn-reorganize').addEventListener('click', () => void this.openReorganizePage());
+        this.el('btn-search-chat').addEventListener('click', () => void this.openManagePage());
+        this.el('reveal-bookmark').addEventListener('click', () => this.revealBookmark());
         this.el('toggle-key').addEventListener('click', () =>
             this.toggleKeyVisibility(this.apiKeyInput, 'toggle-key'));
         this.providerSelect.addEventListener('change', () => void this.onProviderChange());
@@ -222,22 +237,42 @@ class PopupController {
 
     private async initialize(): Promise<void> {
         await this.applyStoredTheme();
-        const state = await this.fetchSettingsState();
-
-        if (!state.hasApiKey) {
+        const hasKey = await SecurityManager.hasApiKey();
+        if (!hasKey) {
             this.showView('onboarding');
             return;
         }
 
         this.showView('main');
-        await Promise.all([
-            this.loadPageInfo(),
-            this.updateProviderChip(),
-        ]);
+        await this.loadPageInfo();
+        this.setStatus('Reconnecting...', 'default');
+
+        try {
+            const state = await this.fetchSettingsState();
+            this.settingsState = state;
+            this.setStatus('Ready', 'default');
+            await this.updateProviderChip();
+        } catch {
+            await this.updateProviderChip();
+            this.setStatus('Reconnecting...', 'default');
+        }
     }
 
     private handleInitializationError(error: unknown): void {
+        void this.recoverFromInitError(error);
+    }
+
+    private async recoverFromInitError(error: unknown): Promise<void> {
         const message = error instanceof Error ? error.message : 'Failed to initialize popup.';
+        const hasKey = await SecurityManager.hasApiKey();
+        if (hasKey) {
+            this.showView('main');
+            this.setStatus('Reconnecting...', 'default');
+            this.showToast('Reconnecting to the background service...', 'info');
+            await this.loadPageInfo();
+            return;
+        }
+
         this.showView('onboarding');
         this.showToast(message, 'error');
     }
@@ -279,8 +314,11 @@ class PopupController {
         btn.textContent = 'Connecting...';
 
         try {
-            await this.sendAction<SettingsState>('SAVE_API_KEY', { apiKey });
             const provider = this.obProvider.value;
+            await this.sendAction<SettingsState>('SAVE_API_KEY', {
+                apiKey,
+                providerId: provider === 'auto' ? undefined : provider,
+            });
             if (provider !== 'auto') {
                 await setProviderPreference(provider);
             }
@@ -335,6 +373,7 @@ class PopupController {
                 };
                 img.src = tab.favIconUrl;
             }
+            await this.checkSavedStatus(tab.url);
         } catch {
             this.pageTitle.textContent = 'Could not load page info';
             this.pageUrl.textContent = '';
@@ -342,6 +381,11 @@ class PopupController {
     }
 
     private async classifyBookmark(): Promise<void> {
+        if (this.revealBookmarkId) {
+            this.showToast('This page is already saved. Use Reveal to open it.', 'info');
+            return;
+        }
+
         this.showProgress('Classifying with AI...');
         this.resultArea.classList.add('hidden');
 
@@ -359,6 +403,9 @@ class PopupController {
 
             this.lastClassification = result;
             this.showClassificationResult(result);
+            if (result.bookmark.id) {
+                this.renderSavedStatus(result.bookmark.id, result.folderPath);
+            }
             this.setStatus('Saved!', 'success');
             this.showToast(
                 `Saved "${result.title}" to ${this.formatFolderPath(result.folderPath)} (${this.confidenceLabel(result.confidence)}).`,
@@ -385,7 +432,7 @@ class PopupController {
     private hideProgress(): void {
         this.progressArea.classList.add('hidden');
         this.classifyArea.classList.remove('hidden');
-        this.classifyBtn.disabled = false;
+        this.classifyBtn.disabled = Boolean(this.revealBookmarkId);
     }
 
     private showClassificationResult(result: ClassifyResultPayload): void {
@@ -434,7 +481,14 @@ class PopupController {
         }
 
         this.renderDetailModal(this.lastClassification);
-        await this.loadDetailModelOptions(false, this.lastClassification.model);
+        const isTypeSafe = this.lastClassification.providerId === 'typesafe';
+        this.detailModelSelect.classList.toggle('hidden', isTypeSafe);
+        this.el('detail-model-label').classList.toggle('hidden', isTypeSafe);
+        if (!isTypeSafe) {
+            await this.loadDetailModelOptions(false, this.lastClassification.model);
+        } else {
+            this.detailReclassifyStatus.textContent = 'Jev will re-choose a folder from your bookmark tree.';
+        }
         this.detailModal.classList.remove('hidden');
         if (focusReclassify) {
             this.detailModelSelect.focus();
@@ -482,7 +536,9 @@ class PopupController {
             return;
         }
 
-        const modelOverride = this.detailModelSelect.value || undefined;
+        const modelOverride = this.lastClassification.providerId === 'typesafe'
+            ? undefined
+            : (this.detailModelSelect.value || undefined);
         this.detailReclassifyBtn.disabled = true;
         this.detailReclassifyStatus.textContent = 'Re-classifying bookmark...';
 
@@ -535,31 +591,39 @@ class PopupController {
         const changedKeys = Object.keys(changes);
         const tracked = [
             'api_key',
+            'provider_api_keys',
             'encrypted_api_key',
             'provider_preference',
             'openrouter_selected_model',
             'auto_classify_enabled',
+            'last_saved_provider',
         ];
         if (!changedKeys.some((key) => tracked.includes(key))) {
             return;
         }
 
-        const state = await this.fetchSettingsState();
-        await this.updateProviderChip();
+        try {
+            const state = await this.fetchSettingsState();
+            this.settingsState = state;
+            await this.updateProviderChip();
 
-        if (!state.hasApiKey && this.currentView !== 'onboarding') {
-            this.showView('onboarding');
-            this.showToast('API key removed. Add a key to continue.', 'info');
-            return;
-        }
+            const stillHasKey = await SecurityManager.hasApiKey();
+            if (!stillHasKey && this.currentView !== 'onboarding') {
+                this.showView('onboarding');
+                this.showToast('API key removed. Add a key to continue.', 'info');
+                return;
+            }
 
-        if (state.hasApiKey && this.currentView === 'onboarding') {
-            this.showView('main');
-            await Promise.all([this.loadPageInfo(), this.updateProviderChip()]);
-        }
+            if (stillHasKey && this.currentView === 'onboarding') {
+                this.showView('main');
+                await Promise.all([this.loadPageInfo(), this.updateProviderChip()]);
+            }
 
-        if (this.currentView === 'settings') {
-            await this.loadSettingsState();
+            if (this.currentView === 'settings') {
+                await this.loadSettingsState();
+            }
+        } catch {
+            // A sleeping service worker must not bounce the user back to onboarding.
         }
     }
 
@@ -570,9 +634,12 @@ class PopupController {
             return;
         }
 
-        this.updateKeyBadge(state.hasApiKey, state.apiKeyHint);
+        this.updateKeyBadge(state.hasApiKey, state.apiKeyHint, state.keyedProviders);
         this.providerSelect.value = state.providerPreference || 'auto';
         this.autoClassifyToggle.setAttribute('aria-checked', state.autoClassifyEnabled ? 'true' : 'false');
+        this.renderProviderKeyList(state.keyedProviders);
+        this.typesafeHelp.classList.toggle('hidden', this.providerSelect.value !== 'typesafe');
+        this.removeKeyBtn.classList.toggle('hidden', !this.selectedProviderHasKey(state));
 
         if (this.providerSelect.value === 'openrouter') {
             this.openRouterModelSection.classList.remove('hidden');
@@ -588,7 +655,11 @@ class PopupController {
         this.themeToggle.setAttribute('aria-checked', theme === 'dark' ? 'true' : 'false');
     }
 
-    private updateKeyBadge(isConnected: boolean, keyHint: string | null): void {
+    private updateKeyBadge(
+        isConnected: boolean,
+        keyHint: string | null,
+        keyedProviders: Array<{ providerId: ProviderId; hint: string }> = [],
+    ): void {
         if (!isConnected) {
             this.keyBadge.className = 'key-badge is-missing';
             this.keyBadgeText.textContent = 'Not configured';
@@ -596,9 +667,37 @@ class PopupController {
         }
 
         this.keyBadge.className = 'key-badge is-connected';
+        if (keyedProviders.length > 1) {
+            this.keyBadgeText.textContent = `${keyedProviders.length} keys stored locally on this device`;
+            return;
+        }
+
         this.keyBadgeText.textContent = keyHint
             ? `Connected (${keyHint}) — stored locally on this device`
             : 'Connected — stored locally on this device';
+    }
+
+    private renderProviderKeyList(keyedProviders: Array<{ providerId: ProviderId; hint: string }>): void {
+        this.providerKeyList.textContent = '';
+        keyedProviders.forEach((entry) => {
+            const row = document.createElement('div');
+            row.className = 'provider-key-row';
+            const name = document.createElement('span');
+            name.textContent = POPUP_PROVIDER_LABELS[entry.providerId] ?? entry.providerId;
+            const hint = document.createElement('span');
+            hint.className = 'provider-key-hint';
+            hint.textContent = entry.hint;
+            row.append(name, hint);
+            this.providerKeyList.appendChild(row);
+        });
+    }
+
+    private selectedProviderHasKey(state: SettingsState): boolean {
+        const selected = this.providerSelect.value;
+        if (selected === 'auto') {
+            return state.hasApiKey;
+        }
+        return state.keyedProviders.some((entry) => entry.providerId === selected);
     }
 
     private showKeyForm(): void {
@@ -628,11 +727,16 @@ class PopupController {
         btn.textContent = 'Saving...';
 
         try {
-            await this.sendAction<SettingsState>('SAVE_API_KEY', { apiKey });
+            await this.sendAction<SettingsState>('SAVE_API_KEY', {
+                apiKey,
+                providerId: this.providerSelect.value === 'auto' ? undefined : this.providerSelect.value,
+            });
             this.hideKeyForm();
             const state = await this.fetchSettingsState();
-            this.updateKeyBadge(state.hasApiKey, state.apiKeyHint);
-            this.showToast('API key saved and synced.', 'success');
+            this.settingsState = state;
+            this.updateKeyBadge(state.hasApiKey, state.apiKeyHint, state.keyedProviders);
+            this.renderProviderKeyList(state.keyedProviders);
+            this.showToast('API key saved on this device.', 'success');
 
             if (this.providerSelect.value === 'openrouter') {
                 await this.loadOpenRouterModels(true, state.selectedOpenRouterModel);
@@ -650,6 +754,7 @@ class PopupController {
     private async onProviderChange(): Promise<void> {
         const provider = this.providerSelect.value;
         await setProviderPreference(provider === 'auto' ? '' : provider);
+        this.typesafeHelp.classList.toggle('hidden', provider !== 'typesafe');
 
         if (provider === 'openrouter') {
             this.openRouterModelSection.classList.remove('hidden');
@@ -793,7 +898,84 @@ class PopupController {
 
     private async updateProviderChip(): Promise<void> {
         const pref = await getProviderPreference();
-        this.providerChipText.textContent = pref ? (PROVIDER_LABELS[pref] ?? pref) : 'Auto Detect';
+        this.providerChipText.textContent = pref ? (POPUP_PROVIDER_LABELS[pref] ?? pref) : 'Auto Detect';
+    }
+
+    private async openManagePage(): Promise<void> {
+        await chrome.tabs.create({ url: chrome.runtime.getURL('manage/manage.html') });
+    }
+
+    private async checkSavedStatus(url: string | undefined): Promise<void> {
+        if (!url || !/^https?:/i.test(url)) {
+            this.hideSavedStatus();
+            return;
+        }
+        try {
+            const result = await this.sendAction<{ found: { bookmark: { id: string }; path: string[] } | null }>(
+                'FIND_BOOKMARK',
+                { url },
+            );
+            if (result.found?.bookmark.id) {
+                this.renderSavedStatus(result.found.bookmark.id, result.found.path);
+                return;
+            }
+        } catch {
+            // A sleeping worker should not hide a page the user can still classify.
+        }
+        this.hideSavedStatus();
+    }
+
+    private renderSavedStatus(bookmarkId: string, path: string[]): void {
+        this.revealBookmarkId = bookmarkId;
+        this.savedPath.textContent = `Saved in: ${this.formatFolderPath(path)}`;
+        this.savedStatus.classList.remove('hidden');
+        this.classifyBtn.disabled = true;
+    }
+
+    private hideSavedStatus(): void {
+        this.revealBookmarkId = null;
+        this.savedStatus.classList.add('hidden');
+        this.classifyBtn.disabled = false;
+    }
+
+    private revealBookmark(): void {
+        if (!this.revealBookmarkId) {
+            return;
+        }
+        void chrome.tabs.create({ url: `chrome://bookmarks/?id=${this.revealBookmarkId}` });
+    }
+
+    private async openReorganizePage(): Promise<void> {
+        const hasTypeSafe = await SecurityManager.hasApiKeyForProvider('typesafe');
+        if (!hasTypeSafe) {
+            this.showToast('Save a TypeSafe (Jev) API key to reorganize your library.', 'info');
+            this.showView('settings');
+            this.showKeyForm();
+            this.providerSelect.value = 'typesafe';
+            await setProviderPreference('typesafe');
+            this.typesafeHelp.classList.remove('hidden');
+            return;
+        }
+
+        await chrome.tabs.create({ url: chrome.runtime.getURL('reorganize/reorganize.html') });
+    }
+
+    private async removeSelectedKey(): Promise<void> {
+        const selected = this.providerSelect.value;
+        const providerId = isProviderId(selected) ? selected : undefined;
+        try {
+            const state = await this.sendAction<SettingsState>('CLEAR_API_KEY', { providerId });
+            this.settingsState = state;
+            this.updateKeyBadge(state.hasApiKey, state.apiKeyHint, state.keyedProviders);
+            this.renderProviderKeyList(state.keyedProviders);
+            this.showToast('API key removed from this device.', 'success');
+            if (!state.hasApiKey) {
+                this.showView('onboarding');
+            }
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to remove API key.';
+            this.showToast(message, 'error');
+        }
     }
 
     private async getStoredTheme(): Promise<Theme> {
@@ -923,14 +1105,30 @@ class PopupController {
     }
 
     private async sendAction<T>(action: string, data?: unknown): Promise<T> {
-        const response = await chrome.runtime.sendMessage({ action, data }) as RuntimeResponse<T> | undefined;
-        if (!response) {
-            throw new Error('No response from background service.');
+        let lastError: Error | null = null;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+            try {
+                const response = await chrome.runtime.sendMessage({ action, data }) as RuntimeResponse<T> | undefined;
+                if (!response) {
+                    throw new Error('No response from background service.');
+                }
+                if (!response.success) {
+                    throw new Error(response.error || 'Request failed.');
+                }
+                return response.result;
+            } catch (error: unknown) {
+                lastError = error instanceof Error ? error : new Error('Request failed.');
+                const message = lastError.message;
+                const retryable = message.includes('No response')
+                    || message.includes('Receiving end does not exist')
+                    || message.includes('Could not establish connection');
+                if (!retryable || attempt === 3) {
+                    throw lastError;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+            }
         }
-        if (!response.success) {
-            throw new Error(response.error || 'Request failed.');
-        }
-        return response.result;
+        throw lastError ?? new Error('Request failed.');
     }
 
     private formatFolderPath(path: string[]): string {
